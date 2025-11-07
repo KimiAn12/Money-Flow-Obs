@@ -1,0 +1,59 @@
+{
+  "timestamp": "2025-11-07T14:30:00Z",
+  "nodes": [
+    {
+      "id": "stocks",
+      "name": "Stocks",
+      "marketCap": 95000000000000,
+      "priceChange": 1.2,
+      "correlation": 1.0
+    },
+    {
+      "id": "bonds",
+      "name": "Bonds",
+      "marketCap": 128000000000000,
+      "priceChange": -0.3,
+      "correlation": -0.42
+    },
+    {
+      "id": "commodities",
+      "name": "Commodities",
+      "marketCap": 21000000000000,
+      "priceChange": 2.8,
+      "correlation": 0.35
+    },
+    {
+      "id": "crypto",
+      "name": "Crypto",
+      "marketCap": 2300000000000,
+      "priceChange": -4.5,
+      "correlation": -0.58
+    },
+    {
+      "id": "cash",
+      "name": "Cash",
+      "marketCap": 45000000000000,
+      "priceChange": 0.0,
+      "correlation": -0.15
+    }
+  ],
+  "edges": [
+    { "source": "stocks", "target": "bonds", "strength": 0.8, "correlation": -0.42 },
+    { "source": "stocks", "target": "commodities", "strength": 0.6, "correlation": 0.35 },
+    { "source": "stocks", "target": "crypto", "strength": 0.4, "correlation": -0.58 },
+    { "source": "stocks", "target": "cash", "strength": 0.5, "correlation": -0.15 },
+    { "source": "bonds", "target": "commodities", "strength": 0.3, "correlation": -0.28 },
+    { "source": "bonds", "target": "crypto", "strength": 0.5, "correlation": -0.61 },
+    { "source": "bonds", "target": "cash", "strength": 0.7, "correlation": 0.45 },
+    { "source": "commodities", "target": "crypto", "strength": 0.2, "correlation": 0.12 },
+    { "source": "commodities", "target": "cash", "strength": 0.4, "correlation": -0.08 },
+    { "source": "crypto", "target": "cash", "strength": 0.3, "correlation": -0.22 }
+  ],
+  "insights": [
+    "Commodities outflows increased 7% vs last week",
+    "Crypto shows strongest inverse correlation with Bonds (-0.58)",
+    "Stock market inflows hit 3-month high at $42B",
+    "Cash positions declining as risk appetite increases",
+    "Gold correlation with equities weakening (-0.12 → -0.08)"
+  ]
+}
