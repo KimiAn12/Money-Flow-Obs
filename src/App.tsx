@@ -10,21 +10,25 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const AppContent = () => (
+  <div className="min-h-screen bg-background">
+    <Navbar />
+    <Routes>
+      <Route path="/" element={<IndustryFlow />} />
+      <Route path="/global-markets" element={<GlobalMarkets />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <div className="min-h-screen bg-background">
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<IndustryFlow />} />
-            <Route path="/global-markets" element={<GlobalMarkets />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </div>
-      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
