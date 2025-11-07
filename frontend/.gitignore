@@ -7,10 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Dependencies
-node_modules/
-dist/
-dist-ssr/
+node_modules
+dist
+dist-ssr
 *.local
 
 # Editor directories and files
@@ -23,14 +22,3 @@ dist-ssr/
 *.njsproj
 *.sln
 *.sw?
-
-# OS files
-Thumbs.db
-.DS_Store
-
-# Backend (add backend-specific ignores here when you create it)
-# backend/venv/
-# backend/__pycache__/
-# backend/*.pyc
-# etc.
-
