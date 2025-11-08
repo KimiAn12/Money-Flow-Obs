@@ -9,6 +9,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
+from app.config import settings
 from app.core.cache import get_cache
 from app.core.data_pipeline import DataPipeline
 from app.core.metrics import MetricsCalculator
@@ -23,20 +24,23 @@ router = APIRouter(prefix="/api/global-flow", tags=["global-flow"])
 data_pipeline = DataPipeline()
 metrics_calculator = MetricsCalculator(window_size=30)
 cache = get_cache()
-persistence = DataPersistence(data_dir="data")
+persistence = DataPersistence(data_dir=settings.DATA_DIR)
 
 
 @router.get("", response_model=GlobalFlowData)
 async def get_global_flow(
     time_range: TimeRange = Query(TimeRange.ONE_WEEK, alias="timeRange"),
-    refresh: bool = Query(False, description="Force refresh of data")
+    refresh: bool = Query(False, description="Force refresh of data (deprecated - data only refreshes at 5pm)")
 ):
     """
     Get global market flow data with regional metrics and bilateral flows.
     
+    NOTE: Data is ONLY fetched from APIs at 5pm each day via scheduled refresh.
+    This endpoint only serves persisted data. If no data is available, wait for the next 5pm refresh.
+    
     Args:
         time_range: Time range for data aggregation
-        refresh: Force refresh of cached data
+        refresh: Deprecated - data only refreshes at scheduled 5pm refresh
         
     Returns:
         GlobalFlowData with regions and flows
@@ -44,22 +48,34 @@ async def get_global_flow(
     try:
         cache_key = f"global_flow_{time_range.value}"
         
-        # Check cache
-        if not refresh:
-            cached_data = cache.get(cache_key)
-            if cached_data:
-                logger.info("Returning cached global flow data")
-                return cached_data
+        # Check cache first (24 hour TTL since we refresh daily)
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            logger.info("Returning cached global flow data")
+            return cached_data
+        
+        # ONLY use persisted data - never fetch from APIs in this endpoint
+        # Data is only fetched at 5pm via scheduled refresh
+        persisted_regional = persistence.load_from_parquet("regional_data_latest.parquet")
+        persisted_flow = persistence.load_from_parquet("flow_data_latest.parquet")
+        
+        # If no persisted data exists, return error - wait for 5pm scheduled refresh
+        if persisted_regional is None or persisted_flow is None:
+            logger.warning("No persisted data available. Data will be available after next 5pm scheduled refresh.")
+            raise HTTPException(
+                status_code=503,
+                detail="Data not available yet. Data is refreshed daily at 5pm. Please wait for the scheduled refresh."
+            )
+        
+        logger.info("Using persisted data (no API calls - data only refreshed at 5pm)")
+        regional_data_df = persisted_regional
+        flow_data_df = persisted_flow
+        
+        # Update data pipeline's internal cache
+        data_pipeline._historical_data["regional_data"] = regional_data_df
+        data_pipeline._historical_data["flow_data"] = flow_data_df
         
         logger.info(f"Generating global flow data for time_range={time_range.value}")
-        
-        # Fetch regional data (async)
-        regional_data_df = await data_pipeline.fetch_regional_data(days=90)
-        regional_data_df = data_pipeline.clean_data(regional_data_df)
-        
-        # Fetch flow data
-        flow_data_df = data_pipeline.fetch_flow_data(days=90)
-        flow_data_df = data_pipeline.clean_data(flow_data_df)
         
         # Get current regional metrics
         regional_metrics = data_pipeline.get_current_regional_indices()
@@ -174,16 +190,8 @@ async def get_global_flow(
             flows=flows
         )
         
-        # Cache the response
-        cache.set(cache_key, response, ttl=300)  # 5 minutes
-        
-        # Persist data
-        try:
-            persistence.save_to_parquet(regional_data_df, "global_flow_regional")
-            persistence.save_to_parquet(flow_data_df, "global_flow_flows")
-            logger.info("Saved global flow data to disk")
-        except Exception as e:
-            logger.warning(f"Failed to persist data: {e}")
+        # Cache the response (24 hours since we refresh daily at 5pm)
+        cache.set(cache_key, response, ttl=86400)  # 24 hours
         
         logger.info(f"Generated global flow data: {len(regions)} regions, {len(flows)} flows")
         return response

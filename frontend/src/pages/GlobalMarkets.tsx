@@ -2,15 +2,17 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TimeRangeSelector } from "@/components/TimeRangeSelector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlobalFlowMap } from "@/components/GlobalFlowMap";
 import { RegionCard } from "@/components/RegionCard";
-import { AssetType, GlobalFlowData } from "@/types";
+import { AssetType, GlobalFlowData, TimeRange } from "@/types";
 import globalFlowData from "@/data/global-flow.json";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
 export default function GlobalMarkets() {
+  const [timeRange, setTimeRange] = useState<TimeRange>('1M');
   const [data, setData] = useState<GlobalFlowData>(globalFlowData as GlobalFlowData);
   const [assetType, setAssetType] = useState<AssetType>('equities');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -22,7 +24,7 @@ export default function GlobalMarkets() {
       setIsRefreshing(true);
       setError(null);
       const response = await fetch(
-        `${API_BASE_URL}/api/global-flow?refresh=${refresh}`
+        `${API_BASE_URL}/api/global-flow?timeRange=${timeRange}&refresh=${refresh}`
       );
       
       if (!response.ok) {
@@ -45,7 +47,7 @@ export default function GlobalMarkets() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [timeRange]);
 
   const handleRefresh = () => {
     fetchData(true);
@@ -72,6 +74,7 @@ export default function GlobalMarkets() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
                 onClick={handleRefresh}

@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     
     # Data Settings
     DATA_DIR: str = "data"
-    CACHE_TTL: int = 300  # 5 minutes
-    DATA_REFRESH_INTERVAL: int = 5  # minutes
+    CACHE_TTL: int = 86400  # 24 hours (since we refresh daily at 5pm)
+    DATA_REFRESH_INTERVAL: int = 1440  # 24 hours in minutes (daily refresh)
     
     # Metrics Settings
     CORRELATION_WINDOW: int = 30  # days

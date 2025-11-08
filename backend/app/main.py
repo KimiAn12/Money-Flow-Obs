@@ -11,8 +11,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import global_flow, industry_flow
+from app.config import settings
 from app.core.cache import get_cache
 from app.core.data_pipeline import DataPipeline
+from app.core.data_refresh_service import DataRefreshService
 from app.core.persistence import DataPersistence
 
 # Configure logging
@@ -27,11 +29,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 # Global instances
 data_pipeline = DataPipeline()
-persistence = DataPersistence(data_dir="data")
-cache = get_cache()
+persistence = DataPersistence(data_dir=settings.DATA_DIR)
+cache = get_cache(default_ttl=settings.CACHE_TTL)
+data_refresh_service = DataRefreshService()
 
 
 @asynccontextmanager
@@ -42,38 +44,37 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Money Flow Observatory API")
     
-    # Initialize data pipeline (async)
-    logger.info("Initializing data pipeline...")
+    # Load persisted data if available
+    logger.info("Loading persisted data...")
     try:
-        # Pre-fetch some data to warm up the cache
-        await data_pipeline.fetch_asset_prices(days=30)
-        await data_pipeline.fetch_regional_data(days=30)
-        data_pipeline.fetch_flow_data(days=30)
-        logger.info("Data pipeline initialized successfully")
+        persisted_data = data_refresh_service.load_persisted_data()
+        if any(persisted_data.values()):
+            logger.info("Loaded persisted data from disk")
+        else:
+            logger.info("No persisted data found, will fetch on first request")
     except Exception as e:
-        logger.error(f"Error initializing data pipeline: {e}")
-        # Continue even if initialization fails - will use mock data
+        logger.error(f"Error loading persisted data: {e}")
     
-    # Schedule periodic data refresh
+    # Schedule daily data refresh at 5pm
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from apscheduler.triggers.interval import IntervalTrigger
+        from apscheduler.triggers.cron import CronTrigger
         
         scheduler = AsyncIOScheduler()
         
-        # Refresh data every 5 minutes
+        # Refresh data daily at 5pm
         scheduler.add_job(
-            refresh_data,
-            trigger=IntervalTrigger(minutes=5),
-            id="refresh_data",
-            name="Refresh market data",
+            daily_data_refresh,
+            trigger=CronTrigger(hour=17, minute=0),  # 5pm daily
+            id="daily_data_refresh",
+            name="Daily data refresh at 5pm",
             replace_existing=True
         )
         
-        # Cleanup cache every hour
+        # Cleanup cache every hour (async function)
         scheduler.add_job(
-            cleanup_cache,
-            trigger=IntervalTrigger(hours=1),
+            cleanup_cache_async,
+            trigger=CronTrigger(minute=0),  # Every hour at minute 0
             id="cleanup_cache",
             name="Cleanup expired cache entries",
             replace_existing=True
@@ -81,7 +82,7 @@ async def lifespan(app: FastAPI):
         
         scheduler.start()
         app.state.scheduler = scheduler
-        logger.info("Scheduler started")
+        logger.info("Scheduler started - Daily refresh scheduled for 5pm")
     except ImportError:
         logger.warning("APScheduler not installed, skipping scheduled tasks")
     except Exception as e:
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     
     # Close API clients
     try:
+        await data_refresh_service.close()
         await data_pipeline.close()
     except Exception as e:
         logger.error(f"Error closing data pipeline: {e}")
@@ -117,7 +119,6 @@ app = FastAPI(
 )
 
 # Configure CORS
-from app.config import settings
 cors_origins = [
     "http://localhost:5173",  # Vite default
     "http://localhost:3000",  # React default
@@ -177,38 +178,25 @@ async def health():
     }
 
 
-async def refresh_data():
+async def daily_data_refresh():
     """
-    Background task to refresh market data.
+    Daily background task to refresh market data from APIs at 5pm.
     """
     try:
-        logger.info("Refreshing market data...")
+        logger.info("Starting daily data refresh (scheduled at 5pm)...")
+        success = await data_refresh_service.refresh_all_data()
         
-        # Fetch fresh data (async)
-        price_data = await data_pipeline.fetch_asset_prices(days=90)
-        regional_data = await data_pipeline.fetch_regional_data(days=90)
-        flow_data = data_pipeline.fetch_flow_data(days=90)
-        
-        # Clean data
-        price_data = data_pipeline.clean_data(price_data)
-        regional_data = data_pipeline.clean_data(regional_data)
-        flow_data = data_pipeline.clean_data(flow_data)
-        
-        # Persist data
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        persistence.save_to_parquet(price_data, f"asset_prices_{timestamp}")
-        persistence.save_to_parquet(regional_data, f"regional_data_{timestamp}")
-        persistence.save_to_parquet(flow_data, f"flow_data_{timestamp}")
-        
-        # Clear cache to force refresh on next request
-        cache.clear()
-        
-        logger.info("Market data refreshed successfully")
+        if success:
+            # Clear cache to force refresh on next request
+            cache.clear()
+            logger.info("Daily data refresh completed successfully")
+        else:
+            logger.error("Daily data refresh failed")
     except Exception as e:
-        logger.error(f"Error refreshing data: {e}", exc_info=True)
+        logger.error(f"Error in daily data refresh: {e}", exc_info=True)
 
 
-def cleanup_cache():
+async def cleanup_cache_async():
     """
     Background task to cleanup expired cache entries.
     """

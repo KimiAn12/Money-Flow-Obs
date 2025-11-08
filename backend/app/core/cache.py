@@ -158,11 +158,16 @@ class RedisCache:
 _cache_instance: Optional[InMemoryCache] = None
 
 
-def get_cache() -> InMemoryCache:
-    """Get the global cache instance."""
+def get_cache(default_ttl: int = 86400) -> InMemoryCache:
+    """
+    Get the global cache instance.
+    
+    Args:
+        default_ttl: Default TTL in seconds (default: 86400 = 24 hours)
+    """
     global _cache_instance
     if _cache_instance is None:
-        _cache_instance = InMemoryCache()
+        _cache_instance = InMemoryCache(default_ttl=default_ttl)
     return _cache_instance
 
 

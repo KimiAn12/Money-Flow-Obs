@@ -51,13 +51,13 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
           <defs>
             <marker
               id={`arrowhead-${assetType}`}
-              markerWidth="10"
-              markerHeight="10"
-              refX="9"
-              refY="3"
+              markerWidth="4"
+              markerHeight="4"
+              refX="3"
+              refY="1.5"
               orient="auto"
             >
-              <polygon points="0 0, 10 3, 0 6" fill={getFlowColor()} />
+              <polygon points="0 0, 4 1.5, 0 3" fill={getFlowColor()} />
             </marker>
           </defs>
 
@@ -86,15 +86,34 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
             const target = regionPositions[flow.target];
             if (!source || !target) return null;
 
-            const thickness = Math.log(flow.amount) / 3;
+            const thickness = Math.max(1, Math.log(flow.amount) / 4);
+            const nodeRadius = 30;
+
+            // Calculate the angle from source to target
+            const dx = target.x - source.x;
+            const dy = target.y - source.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If nodes are too close, skip this flow
+            if (distance < nodeRadius * 2) return null;
+            
+            // Calculate unit vector
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+            
+            // Calculate edge points on circles
+            const sourceEdgeX = source.x + nodeRadius * unitX;
+            const sourceEdgeY = source.y + nodeRadius * unitY;
+            const targetEdgeX = target.x - nodeRadius * unitX;
+            const targetEdgeY = target.y - nodeRadius * unitY;
 
             return (
               <motion.line
                 key={`${flow.source}-${flow.target}-${index}`}
-                x1={source.x}
-                y1={source.y}
-                x2={target.x}
-                y2={target.y}
+                x1={sourceEdgeX}
+                y1={sourceEdgeY}
+                x2={targetEdgeX}
+                y2={targetEdgeY}
                 stroke={getFlowColor()}
                 strokeWidth={thickness}
                 markerEnd={`url(#arrowhead-${assetType})`}
