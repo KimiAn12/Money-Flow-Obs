@@ -53,8 +53,8 @@ async def get_global_flow(
         
         logger.info(f"Generating global flow data for time_range={time_range.value}")
         
-        # Fetch regional data
-        regional_data_df = data_pipeline.fetch_regional_data(days=90)
+        # Fetch regional data (async)
+        regional_data_df = await data_pipeline.fetch_regional_data(days=90)
         regional_data_df = data_pipeline.clean_data(regional_data_df)
         
         # Fetch flow data

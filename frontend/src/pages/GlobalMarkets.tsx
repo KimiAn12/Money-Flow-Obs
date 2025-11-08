@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlobalFlowMap } from "@/components/GlobalFlowMap";
 import { RegionCard } from "@/components/RegionCard";
@@ -11,34 +13,43 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 export default function GlobalMarkets() {
   const [data, setData] = useState<GlobalFlowData>(globalFlowData as GlobalFlowData);
   const [assetType, setAssetType] = useState<AssetType>('equities');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await fetch(`${API_BASE_URL}/api/global-flow`);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch data: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        setData(result);
-      } catch (err) {
-        console.error("Error fetching global flow data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load data");
-        // Fall back to local data on error
-        setData(globalFlowData as GlobalFlowData);
-      } finally {
-        setIsLoading(false);
+  const fetchData = async (refresh = false) => {
+    try {
+      setIsRefreshing(true);
+      setError(null);
+      const response = await fetch(
+        `${API_BASE_URL}/api/global-flow?refresh=${refresh}`
+      );
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch data: ${response.statusText}`);
       }
-    };
+      
+      const result = await response.json();
+      setData(result);
+    } catch (err) {
+      console.error("Error fetching global flow data:", err);
+      setError(err instanceof Error ? err.message : "Failed to load data");
+      // Fall back to local data on error
+      setData(globalFlowData as GlobalFlowData);
+    } finally {
+      setIsRefreshing(false);
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleRefresh = () => {
+    fetchData(true);
+  };
 
   const filteredFlows = data.flows.filter((flow) => flow.assetType === assetType);
   const totalFlow = filteredFlows.reduce((sum, flow) => sum + flow.amount, 0);
@@ -53,9 +64,26 @@ export default function GlobalMarkets() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold glow-purple mb-1">Global Market Flow</h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
+              Real-time capital flow visualization across global markets
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
               Hover over regions and flows for details
             </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={handleRefresh}
+                variant="outline"
+                className="border-border/50 glass-card"
+                disabled={isRefreshing}
+                size="sm"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </motion.div>
           </div>
         </div>
 

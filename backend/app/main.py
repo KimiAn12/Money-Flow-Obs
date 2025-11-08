@@ -42,15 +42,17 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Money Flow Observatory API")
     
-    # Initialize data pipeline
+    # Initialize data pipeline (async)
     logger.info("Initializing data pipeline...")
     try:
-        data_pipeline.fetch_asset_prices(days=30)
-        data_pipeline.fetch_regional_data(days=30)
+        # Pre-fetch some data to warm up the cache
+        await data_pipeline.fetch_asset_prices(days=30)
+        await data_pipeline.fetch_regional_data(days=30)
         data_pipeline.fetch_flow_data(days=30)
         logger.info("Data pipeline initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing data pipeline: {e}")
+        # Continue even if initialization fails - will use mock data
     
     # Schedule periodic data refresh
     try:
@@ -98,6 +100,12 @@ async def lifespan(app: FastAPI):
     # Cleanup
     cache.clear()
     logger.info("Cache cleared")
+    
+    # Close API clients
+    try:
+        await data_pipeline.close()
+    except Exception as e:
+        logger.error(f"Error closing data pipeline: {e}")
 
 
 # Create FastAPI app
@@ -109,17 +117,25 @@ app = FastAPI(
 )
 
 # Configure CORS
+from app.config import settings
+cors_origins = [
+    "http://localhost:5173",  # Vite default
+    "http://localhost:3000",  # React default
+    "http://localhost:8080",  # Frontend port
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
+    "http://[::1]:8080",  # IPv6 localhost
+]
+# Add any origins from settings
+try:
+    cors_origins.extend(settings.cors_origins_list)
+except:
+    pass
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite default
-        "http://localhost:3000",  # React default
-        "http://localhost:8080",  # Frontend port
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-        "http://[::1]:8080",  # IPv6 localhost
-    ],
+    allow_origins=list(set(cors_origins)),  # Remove duplicates
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -161,16 +177,16 @@ async def health():
     }
 
 
-def refresh_data():
+async def refresh_data():
     """
     Background task to refresh market data.
     """
     try:
         logger.info("Refreshing market data...")
         
-        # Fetch fresh data
-        price_data = data_pipeline.fetch_asset_prices(days=90)
-        regional_data = data_pipeline.fetch_regional_data(days=90)
+        # Fetch fresh data (async)
+        price_data = await data_pipeline.fetch_asset_prices(days=90)
+        regional_data = await data_pipeline.fetch_regional_data(days=90)
         flow_data = data_pipeline.fetch_flow_data(days=90)
         
         # Clean data

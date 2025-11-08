@@ -21,12 +21,15 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     
     # CORS Settings
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ]
+    CORS_ORIGINS: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080"
+    )
+    
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
     
     # Data Settings
     DATA_DIR: str = "data"
@@ -44,6 +47,15 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FILE: str = "money_flow_observatory.log"
+    
+    # External API Keys
+    ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
+    FRED_API_KEY: str = os.getenv("FRED_API_KEY", "")
+    
+    # API Settings
+    USE_REAL_DATA: bool = os.getenv("USE_REAL_DATA", "true").lower() == "true"
+    API_REQUEST_TIMEOUT: int = 30  # seconds
+    API_RETRY_ATTEMPTS: int = 3
     
     model_config = {
         "env_file": ".env",
