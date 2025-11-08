@@ -33,6 +33,13 @@ export const Navbar = () => {
               className="px-4 py-2 rounded-lg transition-all text-muted-foreground hover:text-foreground"
               activeClassName="text-primary border-glow-cyan"
             >
+              Home
+            </NavLink>
+            <NavLink
+              to="/industry-flow"
+              className="px-4 py-2 rounded-lg transition-all text-muted-foreground hover:text-foreground"
+              activeClassName="text-primary border-glow-cyan"
+            >
               Industry Flow
             </NavLink>
             <NavLink

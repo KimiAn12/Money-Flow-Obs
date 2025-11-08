@@ -1,23 +1,21 @@
 export interface AssetNode {
   id: string;
-  name: string;
+  size: number;
+  netFlowPct: number;
   marketCap: number;
-  priceChange: number;
-  correlation: number;
 }
 
 export interface FlowEdge {
   source: string;
   target: string;
-  strength: number;
   correlation: number;
+  flowIntensity: number;
 }
 
 export interface IndustryFlowData {
   timestamp: string;
   nodes: AssetNode[];
   edges: FlowEdge[];
-  insights: string[];
 }
 
 export interface RegionData {

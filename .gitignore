@@ -28,9 +28,21 @@ dist-ssr/
 Thumbs.db
 .DS_Store
 
-# Backend (add backend-specific ignores here when you create it)
-# backend/venv/
-# backend/__pycache__/
-# backend/*.pyc
-# etc.
+# Backend
+backend/venv/
+backend/env/
+backend/.venv
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+backend/data/
+backend/*.log
+backend/*.parquet
+backend/*.csv
+backend/.env
+backend/.env.local
 
