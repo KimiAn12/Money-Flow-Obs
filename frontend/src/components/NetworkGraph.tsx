@@ -38,26 +38,39 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
   // Static viewBox - larger dimensions make content appear smaller
   const viewBox = `0 0 ${VIEW_BOX_WIDTH} ${VIEW_BOX_HEIGHT}`;
 
-  // Get node size based on flow - larger nodes = positive flow (inflow), smaller nodes = negative flow (outflow)
-  // node.size is calculated as 1 + (netFlowPct / 100), so:
-  // - Positive flow (e.g., +5%) -> size = 1.05 -> larger node
-  // - Negative flow (e.g., -5%) -> size = 0.95 -> smaller node
-  // Use a more pronounced scaling to make size differences more apparent
-  // Very large base size for much bigger nodes
+  // Get node base size based on market cap (reflects market size)
+  // Then apply flow changes on top of the base size
   const getNodeSize = useCallback((node: AssetNode) => {
-    const baseSize = 500;
-    const minSize = 300;
+    // Find min and max market caps to normalize
+    const marketCaps = nodes.map(n => n.marketCap);
+    const minMarketCap = Math.min(...marketCaps);
+    const maxMarketCap = Math.max(...marketCaps);
+    const marketCapRange = maxMarketCap - minMarketCap;
+    
+    // Base size range (minimum and maximum node sizes)
+    const minBaseSize = 350;  // Smallest nodes (smallest market cap)
+    const maxBaseSize = 800;  // Largest nodes (largest market cap)
+    const baseSizeRange = maxBaseSize - minBaseSize;
+    
+    // Calculate base size based on market cap (normalized to 0-1, then scaled)
+    // This gives us the "original" or "starting" size of the node
+    const normalizedMarketCap = marketCapRange > 0 
+      ? (node.marketCap - minMarketCap) / marketCapRange 
+      : 0.5; // Default to middle if all market caps are the same
+    const baseSize = minBaseSize + (normalizedMarketCap * baseSizeRange);
+    
+    // Apply flow changes: positive flow = increase size, negative flow = decrease size
+    // netFlowPct is a percentage (e.g., +5% or -3%)
+    // Convert to a multiplier (e.g., +5% = 1.05, -3% = 0.97)
+    // Use a scaling factor to make flow changes more visible (multiply by 2)
+    const flowMultiplier = 1 + (node.netFlowPct / 100) * 2; // *2 makes changes more pronounced
+    const finalSize = baseSize * flowMultiplier;
+    
+    // Clamp to reasonable bounds (don't let nodes get too small or too large)
+    const minSize = 250;
     const maxSize = 1000;
-    
-    // Apply a more aggressive scaling factor to make differences more visible
-    // Scale the size difference by 3x to make it more apparent
-    // node.size ranges from ~0.95 to ~1.05, so we'll scale this range
-    const sizeDifference = (node.size - 1) * 3; // Multiply the difference by 3
-    const flowBasedSize = baseSize * (1 + sizeDifference);
-    
-    // Clamp to min/max bounds
-    return Math.max(minSize, Math.min(maxSize, flowBasedSize));
-  }, []);
+    return Math.max(minSize, Math.min(maxSize, finalSize));
+  }, [nodes]);
 
   // Update node positions when nodes change
   useEffect(() => {
@@ -126,15 +139,26 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
   }, []);
 
 
-  // Get edge color based on the node that money flows FROM - solid color, no opacity
+  // Get edge colors for gradient (source and target)
+  const getEdgeColors = (fromNodeId: string, toNodeId: string) => {
+    const fromNode = nodes.find(n => n.id === fromNodeId);
+    const toNode = nodes.find(n => n.id === toNodeId);
+    
+    const fromColors = fromNode ? getNodeColor(fromNode.id, fromNode.netFlowPct) : { stroke: "rgb(156, 163, 175)" };
+    const toColors = toNode ? getNodeColor(toNode.id, toNode.netFlowPct) : { stroke: "rgb(156, 163, 175)" };
+    
+    return {
+      from: fromColors.stroke,
+      to: toColors.stroke,
+    };
+  };
+
+  // Get edge color based on the node that money flows FROM - for backward compatibility
   const getEdgeColor = (fromNodeId: string) => {
     const fromNode = nodes.find(n => n.id === fromNodeId);
     if (!fromNode) {
-      // Default fallback color
       return "rgb(156, 163, 175)";
     }
-    
-    // Use the exact same stroke color as the source node
     const nodeColors = getNodeColor(fromNode.id, fromNode.netFlowPct);
     return nodeColors.stroke;
   };
@@ -152,10 +176,13 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     return markerMap[fromNodeId] || "arrowhead-gray";
   };
 
-  // All edges have the same width - node sizes show the flow instead
-  // Much larger edge width for bigger graph
-  const getEdgeWidth = () => {
-    return 6;
+  // Variable edge width based on flow intensity
+  // Stronger flows = thicker lines for better visual hierarchy
+  const getEdgeWidth = (flowIntensity: number) => {
+    const minWidth = 4;
+    const maxWidth = 14;
+    // Scale flowIntensity (0-1) to width range
+    return minWidth + (flowIntensity * (maxWidth - minWidth));
   };
 
   // Get node color based on asset type
@@ -368,6 +395,15 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                 fill="rgb(156, 163, 175)"
               />
             </marker>
+
+            {/* Glow filter for high-intensity flows */}
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
           </defs>
 
           {/* Edges */}
@@ -382,74 +418,176 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
             }
 
             const endpoints = getEdgeEndpoints(direction.from, direction.to, fromPos, toPos);
-            const edgeColor = getEdgeColor(direction.from);
-            const edgeWidth = getEdgeWidth();
+            const edgeColors = getEdgeColors(direction.from, direction.to);
+            const edgeWidth = getEdgeWidth(edge.flowIntensity);
             const markerId = getArrowMarkerId(direction.from);
-
-            // Create a unique key based on the original edge source and target
-            // This ensures each edge is uniquely identified regardless of direction reversal
             const edgeKey = `${edge.source}-${edge.target}-${index}`;
-
-            return (
-              <motion.line
-                key={edgeKey}
-                x1={endpoints.x1}
-                y1={endpoints.y1}
-                x2={endpoints.x2}
-                y2={endpoints.y2}
-                stroke={edgeColor}
-                strokeWidth={edgeWidth}
-                markerEnd={`url(#${markerId})`}
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1, delay: index * 0.05 }}
-              />
+            const gradientId = `gradient-${edgeKey}`;
+            const pathId = `path-${edgeKey}`;
+            
+            // Calculate path length for animation timing
+            const pathLength = Math.sqrt(
+              Math.pow(endpoints.x2 - endpoints.x1, 2) + 
+              Math.pow(endpoints.y2 - endpoints.y1, 2)
             );
-          })}
-
-          {/* Nodes */}
-          {nodes.map((node) => {
-            const pos = nodePositions[node.id];
-            if (!pos) return null;
-            const size = getNodeSize(node);
-            const nodeColors = getNodeColor(node.id, node.netFlowPct);
+            
+            // Animation duration based on flow intensity (faster = higher intensity)
+            // Stronger flows move faster (1-3 seconds)
+            const animationDuration = Math.max(1, 3 - (edge.flowIntensity * 2));
+            
+            // Calculate number of particles based on flow intensity
+            const particleCount = Math.max(1, Math.floor(edge.flowIntensity * 5));
+            
+            // High intensity threshold for glow effect
+            const isHighIntensity = edge.flowIntensity > 0.7;
 
             return (
-              <g key={node.id}>
-                <motion.circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={size / 2}
-                  fill={nodeColors.fill}
-                  stroke={nodeColors.stroke}
-                  strokeWidth={6}
-                  className="pointer-events-none"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
+              <g key={edgeKey}>
+                <defs>
+                  {/* Gradient definition for this edge */}
+                  <linearGradient id={gradientId} gradientUnits="userSpaceOnUse"
+                    x1={endpoints.x1} y1={endpoints.y1}
+                    x2={endpoints.x2} y2={endpoints.y2}>
+                    <stop offset="0%" stopColor={edgeColors.from} stopOpacity="0.9" />
+                    <stop offset="50%" stopColor={edgeColors.from} stopOpacity="0.7" />
+                    <stop offset="100%" stopColor={edgeColors.to} stopOpacity="0.9" />
+                  </linearGradient>
+                </defs>
+                
+                {/* Path for particles to follow */}
+                <path
+                  id={pathId}
+                  d={`M ${endpoints.x1} ${endpoints.y1} L ${endpoints.x2} ${endpoints.y2}`}
+                  fill="none"
+                  stroke="none"
                 />
-                {/* Invisible hit area for better hover detection */}
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={size / 2 + 20}
-                  fill="transparent"
-                  className="cursor-pointer"
-                  style={{ pointerEvents: 'all' }}
+
+                {/* Main flow line with gradient */}
+                <motion.line
+                  x1={endpoints.x1}
+                  y1={endpoints.y1}
+                  x2={endpoints.x2}
+                  y2={endpoints.y2}
+                  stroke={`url(#${gradientId})`}
+                  strokeWidth={edgeWidth}
+                  markerEnd={`url(#${markerId})`}
+                  strokeLinecap="round"
+                  filter={isHighIntensity ? "url(#glow)" : undefined}
+                  animate={{ 
+                    opacity: Math.max(0.4, Math.min(1, 0.5 + edge.flowIntensity * 0.5)),
+                    strokeWidth: edgeWidth,
+                  }}
+                  transition={{ 
+                    duration: 0.5,
+                    ease: "easeInOut"
+                  }}
                 />
-                <text
-                  x={pos.x}
-                  y={pos.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="font-bold pointer-events-none fill-foreground"
-                  style={{ userSelect: 'none', fontSize: '72px' }}
-                >
-                  {node.id}
-                </text>
+
+                {/* Animated dashed stroke for motion effect */}
+                <motion.line
+                  x1={endpoints.x1}
+                  y1={endpoints.y1}
+                  x2={endpoints.x2}
+                  y2={endpoints.y2}
+                  stroke={`url(#${gradientId})`}
+                  strokeWidth={edgeWidth * 0.6}
+                  strokeDasharray="15,10"
+                  strokeLinecap="round"
+                  opacity={0.6}
+                  animate={{
+                    strokeDashoffset: [0, -25],
+                  }}
+                  transition={{
+                    duration: animationDuration,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
+                />
+
+                {/* Animated particles moving along the flow */}
+                {Array.from({ length: particleCount }).map((_, particleIndex) => {
+                  const delay = (particleIndex / particleCount) * animationDuration;
+                  const particleSize = 3 + (edge.flowIntensity * 2);
+                  
+                  return (
+                    <circle
+                      key={`particle-${particleIndex}`}
+                      r={particleSize}
+                      fill={edgeColors.from}
+                      opacity={0.8}
+                    >
+                      <animateMotion
+                        dur={`${animationDuration}s`}
+                        repeatCount="indefinite"
+                        begin={`${delay}s`}
+                      >
+                        <mpath href={`#${pathId}`} />
+                      </animateMotion>
+                      <animate
+                        attributeName="opacity"
+                        values="0.3;0.9;0.3"
+                        dur={`${animationDuration}s`}
+                        repeatCount="indefinite"
+                        begin={`${delay}s`}
+                      />
+                    </circle>
+                  );
+                })}
               </g>
             );
           })}
+
+              {/* Nodes */}
+              {nodes.map((node) => {
+                const pos = nodePositions[node.id];
+                if (!pos) return null;
+                const size = getNodeSize(node);
+                const nodeColors = getNodeColor(node.id, node.netFlowPct);
+
+                return (
+                  <g key={node.id}>
+                    <motion.circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={size / 2}
+                      fill={nodeColors.fill}
+                      stroke={nodeColors.stroke}
+                      strokeWidth={6}
+                      className="pointer-events-none"
+                      animate={{ 
+                        r: size / 2,
+                        fill: nodeColors.fill,
+                        stroke: nodeColors.stroke,
+                      }}
+                      transition={{ 
+                        duration: 0.6,
+                        ease: "easeInOut"
+                      }}
+                    />
+                    {/* Invisible hit area for better hover detection */}
+                    <motion.circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={size / 2 + 20}
+                      fill="transparent"
+                      className="cursor-pointer"
+                      style={{ pointerEvents: 'all' }}
+                      animate={{ r: size / 2 + 20 }}
+                      transition={{ duration: 0.6, ease: "easeInOut" }}
+                    />
+                    <text
+                      x={pos.x}
+                      y={pos.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="font-bold pointer-events-none fill-foreground"
+                      style={{ userSelect: 'none', fontSize: '72px' }}
+                    >
+                      {node.id}
+                    </text>
+                  </g>
+                );
+              })}
         </svg>
       </div>
 

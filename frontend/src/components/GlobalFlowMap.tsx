@@ -39,6 +39,15 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
     }
   };
 
+  // Get solid color for particles (no opacity)
+  const getFlowColorSolid = () => {
+    switch (assetType) {
+      case 'equities': return 'rgb(0, 255, 255)'; // cyan
+      case 'bonds': return 'rgb(168, 85, 247)'; // purple
+      case 'currency': return 'rgb(52, 211, 153)'; // green
+    }
+  };
+
   // Handle mouse move to detect hover over regions with improved accuracy
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
@@ -107,6 +116,15 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
             >
               <polygon points="0 0, 4 1.5, 0 3" fill={getFlowColor()} />
             </marker>
+
+            {/* Glow filter for high-intensity flows */}
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
           </defs>
 
           {/* World Map Background - Ocean */}
@@ -128,91 +146,198 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
             <path d="M 760 340 Q 790 350 820 360 Q 850 370 880 380 Q 910 390 940 400 Q 970 410 990 420 Q 1000 440 995 460 Q 985 480 970 495 Q 950 500 930 495 Q 910 480 890 460 Q 870 440 850 420 Q 830 400 810 380 Q 790 360 760 340 Z" />
           </g>
 
-          {/* Flows */}
-          {filteredFlows.map((flow, index) => {
-            const source = regionPositions[flow.source];
-            const target = regionPositions[flow.target];
-            if (!source || !target) return null;
+              {/* Flows */}
+              {filteredFlows.map((flow, index) => {
+                const source = regionPositions[flow.source];
+                const target = regionPositions[flow.target];
+                if (!source || !target) return null;
 
-            const thickness = Math.max(1, Math.log(flow.amount) / 4);
-            const nodeRadius = 30;
+                // Calculate flow intensity (normalized amount for visual effects)
+                const maxAmount = Math.max(...filteredFlows.map(f => f.amount), flow.amount);
+                const flowIntensity = Math.min(1, flow.amount / (maxAmount * 0.5));
+                
+                // Variable thickness based on flow amount (more intuitive scaling)
+                const minThickness = 2;
+                const maxThickness = 10;
+                const thickness = minThickness + (flowIntensity * (maxThickness - minThickness));
+                const nodeRadius = 35;
 
-            // Calculate the angle from source to target
-            const dx = target.x - source.x;
-            const dy = target.y - source.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // If nodes are too close, skip this flow
-            if (distance < nodeRadius * 2) return null;
-            
-            // Calculate unit vector
-            const unitX = dx / distance;
-            const unitY = dy / distance;
-            
-            // Calculate edge points on circles
-            const sourceEdgeX = source.x + nodeRadius * unitX;
-            const sourceEdgeY = source.y + nodeRadius * unitY;
-            const targetEdgeX = target.x - nodeRadius * unitX;
-            const targetEdgeY = target.y - nodeRadius * unitY;
+                // Calculate the angle from source to target
+                const dx = target.x - source.x;
+                const dy = target.y - source.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // If nodes are too close, skip this flow
+                if (distance < nodeRadius * 2) return null;
+                
+                // Calculate unit vector
+                const unitX = dx / distance;
+                const unitY = dy / distance;
+                
+                // Calculate edge points on circles
+                const sourceEdgeX = source.x + nodeRadius * unitX;
+                const sourceEdgeY = source.y + nodeRadius * unitY;
+                const targetEdgeX = target.x - nodeRadius * unitX;
+                const targetEdgeY = target.y - nodeRadius * unitY;
 
-            return (
-              <motion.line
-                key={`${flow.source}-${flow.target}-${index}`}
-                x1={sourceEdgeX}
-                y1={sourceEdgeY}
-                x2={targetEdgeX}
-                y2={targetEdgeY}
-                stroke={getFlowColor()}
-                strokeWidth={thickness}
-                markerEnd={`url(#arrowhead-${assetType})`}
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.5, delay: index * 0.2 }}
-                className="pointer-events-none"
-              />
-            );
+                const flowKey = `flow-${flow.source}-${flow.target}-${index}`;
+                const pathId = `path-${flowKey}`;
+                const gradientId = `gradient-${flowKey}`;
+                
+                // Animation duration based on flow intensity
+                const animationDuration = Math.max(1.5, 4 - (flowIntensity * 2));
+                const particleCount = Math.max(1, Math.floor(flowIntensity * 4));
+                const isHighIntensity = flowIntensity > 0.6;
+
+                return (
+                  <g key={flowKey} className="pointer-events-none">
+                    <defs>
+                      {/* Gradient for flow line */}
+                      <linearGradient id={gradientId} gradientUnits="userSpaceOnUse"
+                        x1={sourceEdgeX} y1={sourceEdgeY}
+                        x2={targetEdgeX} y2={targetEdgeY}>
+                        <stop offset="0%" stopColor={getFlowColor()} stopOpacity="0.8" />
+                        <stop offset="50%" stopColor={getFlowColor()} stopOpacity="0.6" />
+                        <stop offset="100%" stopColor={getFlowColor()} stopOpacity="0.8" />
+                      </linearGradient>
+                    </defs>
+                    
+                    {/* Path for particles */}
+                    <path
+                      id={pathId}
+                      d={`M ${sourceEdgeX} ${sourceEdgeY} L ${targetEdgeX} ${targetEdgeY}`}
+                      fill="none"
+                      stroke="none"
+                    />
+
+                    {/* Main flow line with gradient */}
+                    <motion.line
+                      x1={sourceEdgeX}
+                      y1={sourceEdgeY}
+                      x2={targetEdgeX}
+                      y2={targetEdgeY}
+                      stroke={`url(#${gradientId})`}
+                      strokeWidth={thickness}
+                      markerEnd={`url(#arrowhead-${assetType})`}
+                      strokeLinecap="round"
+                      filter={isHighIntensity ? "url(#glow)" : undefined}
+                      animate={{ 
+                        strokeWidth: thickness,
+                        opacity: Math.max(0.5, Math.min(1, 0.6 + flowIntensity * 0.4)),
+                      }}
+                      transition={{ 
+                        duration: 0.5,
+                        ease: "easeInOut"
+                      }}
+                    />
+
+                    {/* Animated dashed stroke for motion effect */}
+                    <motion.line
+                      x1={sourceEdgeX}
+                      y1={sourceEdgeY}
+                      x2={targetEdgeX}
+                      y2={targetEdgeY}
+                      stroke={`url(#${gradientId})`}
+                      strokeWidth={thickness * 0.7}
+                      strokeDasharray="12,8"
+                      strokeLinecap="round"
+                      opacity={0.5}
+                      animate={{
+                        strokeDashoffset: [0, -20],
+                      }}
+                      transition={{
+                        duration: animationDuration,
+                        repeat: Infinity,
+                        ease: "linear",
+                      }}
+                    />
+
+                    {/* Animated particles */}
+                    {Array.from({ length: particleCount }).map((_, particleIndex) => {
+                      const delay = (particleIndex / particleCount) * animationDuration;
+                      const particleSize = 2 + (flowIntensity * 1.5);
+                      
+                      return (
+                        <circle
+                          key={`particle-${particleIndex}`}
+                          r={particleSize}
+                          fill={getFlowColorSolid()}
+                          opacity={0.7}
+                        >
+                          <animateMotion
+                            dur={`${animationDuration}s`}
+                            repeatCount="indefinite"
+                            begin={`${delay}s`}
+                          >
+                            <mpath href={`#${pathId}`} />
+                          </animateMotion>
+                          <animate
+                            attributeName="opacity"
+                            values="0.4;0.8;0.4"
+                            dur={`${animationDuration}s`}
+                            repeatCount="indefinite"
+                            begin={`${delay}s`}
+                          />
+                        </circle>
+                      );
+                    })}
+                  </g>
+                );
           })}
 
-          {/* Regions */}
-          {regions.map((region) => {
-            const pos = regionPositions[region.id];
-            if (!pos) return null;
+              {/* Regions */}
+              {regions.map((region) => {
+                const pos = regionPositions[region.id];
+                if (!pos) return null;
+                
+                // Scale region circle based on stock index (larger = higher index)
+                const baseRadius = 30;
+                const scaleFactor = Math.min(1.5, Math.max(0.7, region.stockIndex / 4000));
+                const radius = baseRadius * scaleFactor;
+                const fillOpacity = Math.max(0.15, Math.min(0.35, 0.2 + (Math.abs(region.stockChange) / 100) * 0.15));
 
-            return (
-              <g key={region.id}>
-                <motion.circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={30}
-                  fill="rgba(6, 182, 212, 0.2)"
-                  stroke="rgb(6, 182, 212)"
-                  strokeWidth={2}
-                  className="pointer-events-none"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", delay: 0.3 }}
-                />
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={40}
-                  fill="transparent"
-                  className="cursor-pointer"
-                  style={{ pointerEvents: 'all' }}
-                />
-                <text
-                  x={pos.x}
-                  y={pos.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="text-xs font-bold pointer-events-none fill-foreground"
-                  style={{ userSelect: 'none' }}
-                >
-                  {region.name}
-                </text>
-              </g>
-            );
-          })}
+                return (
+                  <g key={region.id}>
+                    <motion.circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={radius}
+                      fill={`rgba(6, 182, 212, ${fillOpacity})`}
+                      stroke="rgb(6, 182, 212)"
+                      strokeWidth={2}
+                      className="pointer-events-none"
+                      animate={{ 
+                        r: radius,
+                        fill: `rgba(6, 182, 212, ${fillOpacity})`,
+                      }}
+                      transition={{ 
+                        duration: 0.6,
+                        ease: "easeInOut"
+                      }}
+                    />
+                    <motion.circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={radius + 10}
+                      fill="transparent"
+                      className="cursor-pointer"
+                      style={{ pointerEvents: 'all' }}
+                      animate={{ r: radius + 10 }}
+                      transition={{ duration: 0.6, ease: "easeInOut" }}
+                    />
+                    <text
+                      x={pos.x}
+                      y={pos.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="text-xs font-bold pointer-events-none fill-foreground"
+                      style={{ userSelect: 'none' }}
+                    >
+                      {region.name}
+                    </text>
+                  </g>
+                );
+              })}
         </svg>
       </div>
 

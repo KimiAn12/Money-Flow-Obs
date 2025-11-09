@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TimeRangeSelector } from "@/components/TimeRangeSelector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GlobalFlowMap } from "@/components/GlobalFlowMap";
 import { RegionCard } from "@/components/RegionCard";
+import { usePlayAnimation } from "@/hooks/usePlayAnimation";
+import { generateAnimationSnapshots } from "@/utils/animationUtils";
 import { AssetType, GlobalFlowData, TimeRange } from "@/types";
 import globalFlowData from "@/data/global-flow.json";
 
@@ -19,6 +21,40 @@ export default function GlobalMarkets() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Animation state
+  const [animationStep, setAnimationStep] = useState<number | null>(null);
+  const animationSnapshotsRef = useRef<GlobalFlowData[]>([]);
+  
+  // Generate animation snapshots when data or timeRange changes
+  const animationSnapshots = useMemo(() => {
+    return generateAnimationSnapshots(data, timeRange);
+  }, [data, timeRange]);
+  
+  // Store snapshots in ref for animation hook
+  useEffect(() => {
+    animationSnapshotsRef.current = animationSnapshots;
+  }, [animationSnapshots]);
+  
+  // Animation hook
+  const animation = usePlayAnimation({
+    totalSteps: animationSnapshots.length,
+    duration: 3000, // 3 seconds
+    onStepChange: (step) => {
+      setAnimationStep(step);
+    },
+    onComplete: () => {
+      setAnimationStep(null);
+    },
+  });
+  
+  // Get current data (animated or static)
+  const currentData = useMemo(() => {
+    if (animationStep !== null && animationSnapshots[animationStep]) {
+      return animationSnapshots[animationStep];
+    }
+    return data;
+  }, [animationStep, animationSnapshots, data]);
 
   const fetchData = async () => {
     try {
@@ -55,8 +91,12 @@ export default function GlobalMarkets() {
     fetchData();
   };
 
-  const filteredFlows = data.flows.filter((flow) => flow.assetType === assetType);
+  const filteredFlows = currentData.flows.filter((flow) => flow.assetType === assetType);
   const totalFlow = filteredFlows.reduce((sum, flow) => sum + flow.amount, 0);
+  
+  const handlePlay = () => {
+    animation.play();
+  };
 
   return (
     <div className="h-screen bg-background overflow-hidden flex flex-col">
@@ -74,6 +114,15 @@ export default function GlobalMarkets() {
           </div>
           <div className="flex items-center gap-3">
             <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
+            <Button
+              onClick={handlePlay}
+              disabled={animation.isPlaying}
+              size="sm"
+              className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              {animation.isPlaying ? "Animating..." : "Play Animation"}
+            </Button>
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
                 onClick={handleRefresh}
@@ -113,8 +162,8 @@ export default function GlobalMarkets() {
                 className="lg:col-span-2 h-full min-h-0 overflow-hidden"
               >
                 <GlobalFlowMap
-                  regions={data.regions}
-                  flows={data.flows}
+                  regions={currentData.regions}
+                  flows={currentData.flows}
                   assetType={assetType}
                 />
               </motion.div>
@@ -148,7 +197,7 @@ export default function GlobalMarkets() {
                   <div className="glass-card p-3 rounded-lg border border-border/50 flex-shrink-0 mb-2">
                     <h2 className="text-base font-semibold mb-2">Regions</h2>
                     <div className="space-y-1.5">
-                      {data.regions.map((region) => (
+                      {currentData.regions.map((region) => (
                         <div
                           key={region.id}
                           className="p-2 rounded-lg border border-border/30 hover:border-primary/50 transition-all"
@@ -174,7 +223,9 @@ export default function GlobalMarkets() {
                 </div>
                 
                 <div className="text-xs text-center text-muted-foreground flex-shrink-0 pt-1 border-t border-border/30">
-                  {isLoading ? "Loading..." : `Last updated: ${new Date(data.timestamp).toLocaleString()}`}
+                  {isLoading ? "Loading..." : animation.isPlaying 
+                    ? `Animating: ${timeRange} timeframe...`
+                    : `Last updated: ${new Date(currentData.timestamp).toLocaleString()}`}
                 </div>
               </motion.div>
             </div>

@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TimeRangeSelector } from "@/components/TimeRangeSelector";
 import { NetworkGraph } from "@/components/NetworkGraph";
+import { usePlayAnimation } from "@/hooks/usePlayAnimation";
+import { generateAnimationSnapshots } from "@/utils/animationUtils";
 import { TimeRange, IndustryFlowData } from "@/types";
 import industryFlowData from "@/data/industry-flow.json";
 
@@ -16,6 +18,40 @@ export default function IndustryFlow() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Animation state
+  const [animationStep, setAnimationStep] = useState<number | null>(null);
+  const animationSnapshotsRef = useRef<IndustryFlowData[]>([]);
+  
+  // Generate animation snapshots when data or timeRange changes
+  const animationSnapshots = useMemo(() => {
+    return generateAnimationSnapshots(data, timeRange);
+  }, [data, timeRange]);
+  
+  // Store snapshots in ref for animation hook
+  useEffect(() => {
+    animationSnapshotsRef.current = animationSnapshots;
+  }, [animationSnapshots]);
+  
+  // Animation hook
+  const animation = usePlayAnimation({
+    totalSteps: animationSnapshots.length,
+    duration: 3000, // 3 seconds
+    onStepChange: (step) => {
+      setAnimationStep(step);
+    },
+    onComplete: () => {
+      setAnimationStep(null);
+    },
+  });
+  
+  // Get current data (animated or static)
+  const currentData = useMemo(() => {
+    if (animationStep !== null && animationSnapshots[animationStep]) {
+      return animationSnapshots[animationStep];
+    }
+    return data;
+  }, [animationStep, animationSnapshots, data]);
 
   const fetchData = async () => {
     try {
@@ -51,6 +87,10 @@ export default function IndustryFlow() {
     // Reload data from static file
     fetchData();
   };
+  
+  const handlePlay = () => {
+    animation.play();
+  };
 
 
   return (
@@ -69,6 +109,15 @@ export default function IndustryFlow() {
           </div>
           <div className="flex items-center gap-3">
             <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
+            <Button
+              onClick={handlePlay}
+              disabled={animation.isPlaying}
+              size="sm"
+              className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              {animation.isPlaying ? "Animating..." : "Play Animation"}
+            </Button>
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
                 onClick={handleRefresh}
@@ -93,7 +142,7 @@ export default function IndustryFlow() {
             transition={{ delay: 0.2 }}
             className="lg:col-span-2 h-full min-h-0 overflow-hidden"
           >
-            <NetworkGraph nodes={data.nodes} edges={data.edges} />
+            <NetworkGraph nodes={currentData.nodes} edges={currentData.edges} />
           </motion.div>
 
           {/* Information Panel - Right Side (1/3 width) */}
@@ -107,7 +156,7 @@ export default function IndustryFlow() {
               <div className="glass-card p-3 rounded-lg border border-border/50 flex-shrink-0 mb-2">
                 <h2 className="text-base font-semibold mb-2">Asset Classes</h2>
                 <div className="space-y-1.5">
-                  {data.nodes.map((node) => (
+                  {currentData.nodes.map((node) => (
                     <div
                       key={node.id}
                       className={`p-2 rounded-lg border transition-all ${
@@ -143,7 +192,9 @@ export default function IndustryFlow() {
             </div>
             
             <div className="text-xs text-center text-muted-foreground flex-shrink-0 pt-1 border-t border-border/30">
-              {isLoading ? "Loading..." : `Last updated: ${new Date(data.timestamp).toLocaleString()}`}
+              {isLoading ? "Loading..." : animation.isPlaying 
+                ? `Animating: ${timeRange} timeframe...`
+                : `Last updated: ${new Date(currentData.timestamp).toLocaleString()}`}
             </div>
           </motion.div>
         </div>
