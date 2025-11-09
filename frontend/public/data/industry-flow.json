@@ -1,0 +1,97 @@
+{
+  "timestamp": "2025-11-07T14:30:00Z",
+  "nodes": [
+    {
+      "id": "Stocks",
+      "size": 1.05,
+      "netFlowPct": 5.0,
+      "marketCap": 41000
+    },
+    {
+      "id": "Bonds",
+      "size": 0.97,
+      "netFlowPct": -3.0,
+      "marketCap": 25000
+    },
+    {
+      "id": "Commodities",
+      "size": 1.02,
+      "netFlowPct": 2.0,
+      "marketCap": 8000
+    },
+    {
+      "id": "Crypto",
+      "size": 0.95,
+      "netFlowPct": -5.0,
+      "marketCap": 3500
+    },
+    {
+      "id": "Cash",
+      "size": 1.01,
+      "netFlowPct": 1.0,
+      "marketCap": 15000
+    }
+  ],
+  "edges": [
+    {
+      "source": "Stocks",
+      "target": "Bonds",
+      "correlation": 0.65,
+      "flowIntensity": 0.42
+    },
+    {
+      "source": "Stocks",
+      "target": "Commodities",
+      "correlation": 0.35,
+      "flowIntensity": 0.28
+    },
+    {
+      "source": "Stocks",
+      "target": "Crypto",
+      "correlation": -0.58,
+      "flowIntensity": 0.15
+    },
+    {
+      "source": "Stocks",
+      "target": "Cash",
+      "correlation": -0.15,
+      "flowIntensity": 0.35
+    },
+    {
+      "source": "Bonds",
+      "target": "Commodities",
+      "correlation": -0.28,
+      "flowIntensity": 0.12
+    },
+    {
+      "source": "Bonds",
+      "target": "Crypto",
+      "correlation": -0.61,
+      "flowIntensity": 0.18
+    },
+    {
+      "source": "Bonds",
+      "target": "Cash",
+      "correlation": 0.45,
+      "flowIntensity": 0.25
+    },
+    {
+      "source": "Commodities",
+      "target": "Crypto",
+      "correlation": 0.12,
+      "flowIntensity": 0.08
+    },
+    {
+      "source": "Commodities",
+      "target": "Cash",
+      "correlation": -0.08,
+      "flowIntensity": 0.22
+    },
+    {
+      "source": "Crypto",
+      "target": "Cash",
+      "correlation": -0.22,
+      "flowIntensity": 0.30
+    }
+  ]
+}

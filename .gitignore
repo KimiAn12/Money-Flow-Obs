@@ -46,3 +46,15 @@ backend/*.csv
 backend/.env
 backend/.env.local
 
+# Scripts
+scripts/.env
+scripts/.env.local
+scripts/__pycache__/
+scripts/*.pyc
+
+# Data files (keep frontend/public/data/ for JSON files)
+# But ignore large files
+*.parquet
+*.csv
+!frontend/public/data/*.json
+

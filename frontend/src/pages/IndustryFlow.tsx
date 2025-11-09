@@ -7,7 +7,8 @@ import { NetworkGraph } from "@/components/NetworkGraph";
 import { TimeRange, IndustryFlowData } from "@/types";
 import industryFlowData from "@/data/industry-flow.json";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
+// Read from static file in public/data/ (updated daily by script)
+const DATA_URL = "/data/industry-flow.json";
 
 export default function IndustryFlow() {
   const [timeRange, setTimeRange] = useState<TimeRange>('1M');
@@ -16,24 +17,24 @@ export default function IndustryFlow() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async (refresh = false) => {
+  const fetchData = async () => {
     try {
       setIsRefreshing(true);
       setError(null);
-      const response = await fetch(
-        `${API_BASE_URL}/api/industry-flow?timeRange=${timeRange}&refresh=${refresh}`
-      );
+      
+      // Try to fetch from static file in public/data/
+      const response = await fetch(DATA_URL);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.statusText}`);
+        throw new Error(`Failed to load data: ${response.statusText}`);
       }
       
       const result = await response.json();
       setData(result);
     } catch (err) {
-      console.error("Error fetching industry flow data:", err);
+      console.error("Error loading industry flow data:", err);
       setError(err instanceof Error ? err.message : "Failed to load data");
-      // Fall back to local data on error
+      // Fall back to local data in src/data/ on error
       setData(industryFlowData as IndustryFlowData);
     } finally {
       setIsRefreshing(false);
@@ -44,10 +45,11 @@ export default function IndustryFlow() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRange]);
+  }, []); // Only fetch once on mount, timeRange is not used for API calls
 
   const handleRefresh = () => {
-    fetchData(true);
+    // Reload data from static file
+    fetchData();
   };
 
 

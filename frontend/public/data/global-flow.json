@@ -1,0 +1,61 @@
+{
+  "timestamp": "2025-11-07T14:30:00Z",
+  "regions": [
+    {
+      "id": "usa",
+      "name": "USA",
+      "stockIndex": 5247.89,
+      "stockChange": 0.85,
+      "currency": "USD",
+      "currencyStrength": 1.0,
+      "bondYield": 4.32
+    },
+    {
+      "id": "china",
+      "name": "China",
+      "stockIndex": 3187.42,
+      "stockChange": -1.24,
+      "currency": "CNY",
+      "currencyStrength": 0.92,
+      "bondYield": 2.68
+    },
+    {
+      "id": "europe",
+      "name": "Europe",
+      "stockIndex": 4892.15,
+      "stockChange": 0.42,
+      "currency": "EUR",
+      "currencyStrength": 1.08,
+      "bondYield": 2.95
+    },
+    {
+      "id": "japan",
+      "name": "Japan",
+      "stockIndex": 38764.32,
+      "stockChange": 1.15,
+      "currency": "JPY",
+      "currencyStrength": 0.87,
+      "bondYield": 0.75
+    },
+    {
+      "id": "india",
+      "name": "India",
+      "stockIndex": 72458.79,
+      "stockChange": 2.34,
+      "currency": "INR",
+      "currencyStrength": 0.78,
+      "bondYield": 7.18
+    }
+  ],
+  "flows": [
+    { "source": "usa", "target": "china", "amount": 12500000000, "assetType": "equities" },
+    { "source": "usa", "target": "europe", "amount": 28400000000, "assetType": "equities" },
+    { "source": "china", "target": "usa", "amount": 18200000000, "assetType": "bonds" },
+    { "source": "europe", "target": "usa", "amount": 15700000000, "assetType": "equities" },
+    { "source": "japan", "target": "usa", "amount": 9800000000, "assetType": "bonds" },
+    { "source": "india", "target": "usa", "amount": 3200000000, "assetType": "equities" },
+    { "source": "usa", "target": "india", "amount": 7600000000, "assetType": "equities" },
+    { "source": "europe", "target": "china", "amount": 11200000000, "assetType": "equities" },
+    { "source": "china", "target": "europe", "amount": 8900000000, "assetType": "currency" }
+  ]
+}

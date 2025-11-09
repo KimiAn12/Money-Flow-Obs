@@ -1,0 +1,5 @@
+# Requirements for update_data.py script
+pandas>=2.2.0
+numpy>=2.1.0
+httpx>=0.27.0
+
