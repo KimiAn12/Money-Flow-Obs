@@ -10,17 +10,19 @@ interface GlobalFlowMapProps {
 
 export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps) => {
   const [hoveredRegion, setHoveredRegion] = useState<RegionData | null>(null);
+  const [highlightedRegions, setHighlightedRegions] = useState<Set<string>>(new Set());
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Geographic positions on world map (percentage-based, then scaled to SVG coordinates)
-  // Using a 1000x500 coordinate system that represents the world map
+  // Using a 1200x600 coordinate system that represents the world map (zoomed out)
+  // Increased dimensions to zoom out and ensure all regions are fully visible
   const initialPositions: Record<string, { x: number; y: number }> = {
-    usa: { x: 200, y: 180 },      // North America, left-center
-    europe: { x: 480, y: 150 },   // Europe, center-left
-    china: { x: 750, y: 200 },    // China, right-center
-    japan: { x: 820, y: 180 },    // Japan, far right, upper
-    india: { x: 680, y: 240 },    // India, right-center, lower
+    usa: { x: 240, y: 220 },      // North America, left-center - moved down
+    europe: { x: 580, y: 190 },   // Europe, center-left - moved down
+    china: { x: 900, y: 240 },    // China, right-center - moved down
+    japan: { x: 980, y: 220 },    // Japan, far right, upper - moved down
+    india: { x: 820, y: 290 },    // India, right-center, lower - moved down
   };
 
   const [regionPositions, setRegionPositions] = useState<Record<string, { x: number; y: number; fx?: number; fy?: number }>>(
@@ -46,6 +48,104 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
       case 'bonds': return 'rgb(168, 85, 247)'; // purple
       case 'currency': return 'rgb(52, 211, 153)'; // green
     }
+  };
+
+  // Get connected region IDs for a given region
+  const getConnectedRegions = useCallback((regionId: string) => {
+    const connected = new Set<string>();
+    filteredFlows.forEach(flow => {
+      if (flow.source === regionId) connected.add(flow.target);
+      if (flow.target === regionId) connected.add(flow.source);
+    });
+    return Array.from(connected);
+  }, [filteredFlows]);
+
+  // Get region color based on stock change and flow state
+  const getRegionColor = (region: RegionData) => {
+    const baseColor = "rgb(6, 182, 212)"; // cyan base color
+    const stockChange = region.stockChange;
+    const stockChangeMagnitude = Math.abs(stockChange);
+    const normalizedMagnitude = Math.min(stockChangeMagnitude / 10, 1); // Normalize to 0-1 (10% max)
+    
+    // Dynamic fill opacity based on stock change magnitude
+    // Positive change = brighter (0.25 to 0.4), negative change = dimmer (0.15 to 0.2)
+    let fillOpacity: number;
+    let pulseColor: string;
+    
+    if (stockChange > 0) {
+      // Positive change: increase opacity (0.25 to 0.4)
+      fillOpacity = 0.25 + (normalizedMagnitude * 0.15);
+      pulseColor = "rgba(34, 197, 94, 0.6)"; // Green pulse for positive change
+    } else if (stockChange < 0) {
+      // Negative change: decrease opacity (0.15 to 0.2)
+      fillOpacity = 0.2 - (normalizedMagnitude * 0.05);
+      fillOpacity = Math.max(0.1, fillOpacity);
+      pulseColor = "rgba(239, 68, 68, 0.6)"; // Red pulse for negative change
+    } else {
+      fillOpacity = 0.2;
+      pulseColor = "transparent";
+    }
+    
+    return {
+      fill: `rgba(6, 182, 212, ${fillOpacity})`,
+      stroke: baseColor,
+      pulseColor,
+    };
+  };
+
+  // Check if flow should be highlighted (connected to hovered region)
+  const isFlowHighlighted = (flow: GlobalFlow) => {
+    if (highlightedRegions.size === 0) return false;
+    return highlightedRegions.has(flow.source) || highlightedRegions.has(flow.target);
+  };
+
+  // Check if region should be highlighted
+  const isRegionHighlighted = (regionId: string) => {
+    if (highlightedRegions.size === 0) return true; // Show all if nothing hovered
+    return highlightedRegions.has(regionId);
+  };
+
+  // Calculate curved edge endpoints
+  const getCurvedEdgeEndpoints = (
+    source: { x: number; y: number },
+    target: { x: number; y: number },
+    nodeRadius: number
+  ) => {
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // If nodes are too close, return straight line endpoints
+    if (distance < nodeRadius * 2) {
+      return {
+        x1: source.x,
+        y1: source.y,
+        x2: target.x,
+        y2: target.y,
+        controlX: (source.x + target.x) / 2,
+        controlY: (source.y + target.y) / 2,
+      };
+    }
+    
+    // Calculate unit vector
+    const ux = dx / distance;
+    const uy = dy / distance;
+    
+    // Offset from node centers to avoid overlap
+    const x1 = source.x + ux * nodeRadius;
+    const y1 = source.y + uy * nodeRadius;
+    const x2 = target.x - ux * nodeRadius;
+    const y2 = target.y - uy * nodeRadius;
+    
+    // Calculate control point for curved edge (perpendicular offset)
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    // Curvature amount (perpendicular offset) - 15% of distance, max 200px
+    const curvature = Math.min(distance * 0.15, 200);
+    const controlX = midX + (-uy * curvature);
+    const controlY = midY + (ux * curvature);
+    
+    return { x1, y1, x2, y2, controlX, controlY };
   };
 
   // Handle mouse move to detect hover over regions with improved accuracy
@@ -83,11 +183,20 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
     }
     
     setHoveredRegion(foundRegion);
-  }, [regions, regionPositions]);
+    
+    // Highlight connected regions when hovering
+    if (foundRegion) {
+      const connected = getConnectedRegions(foundRegion.id);
+      setHighlightedRegions(new Set([foundRegion.id, ...connected]));
+    } else {
+      setHighlightedRegions(new Set());
+    }
+  }, [regions, regionPositions, getConnectedRegions]);
   
   // Handle mouse leave to clear hover
   const handleMouseLeave = useCallback(() => {
     setHoveredRegion(null);
+    setHighlightedRegions(new Set());
   }, []);
 
   return (
@@ -100,7 +209,7 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
         <svg
           ref={svgRef}
           className="w-full h-full"
-          viewBox="0 0 1000 500"
+          viewBox="0 0 1200 600"
           preserveAspectRatio="xMidYMid meet"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -128,22 +237,22 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
           </defs>
 
           {/* World Map Background - Ocean */}
-          <rect x="0" y="0" width="1000" height="500" fill="rgba(15, 23, 42, 0.6)" />
+          <rect x="0" y="0" width="1200" height="600" fill="rgba(15, 23, 42, 0.6)" />
           
-          {/* Simple world map outline - continents (stylized) */}
-          <g opacity="0.25" fill="rgba(100, 116, 139, 0.3)" stroke="rgba(148, 163, 184, 0.5)" strokeWidth="1">
-            {/* North America */}
-            <path d="M 100 80 Q 150 90 200 100 Q 250 110 300 130 Q 320 150 330 180 Q 335 210 325 240 Q 310 270 280 290 Q 240 310 200 320 Q 150 325 100 310 Q 60 290 50 260 Q 45 230 55 200 Q 70 170 90 140 Q 100 110 100 80 Z" />
-            {/* South America */}
-            <path d="M 280 280 Q 300 300 320 330 Q 340 360 350 390 Q 360 420 370 450 Q 380 470 400 480 Q 420 485 440 480 Q 460 470 480 450 Q 490 420 485 380 Q 475 340 460 310 Q 440 280 410 260 Q 380 245 350 240 Q 320 245 300 260 Z" />
-            {/* Europe */}
-            <path d="M 460 80 Q 500 85 550 90 Q 600 95 650 100 Q 700 105 750 110 Q 800 115 850 120 Q 900 125 950 130 Q 980 140 990 160 Q 985 180 970 200 Q 950 220 920 240 Q 880 260 840 280 Q 800 300 760 320 Q 720 340 680 360 Q 640 380 600 400 Q 560 420 520 440 Q 480 460 440 480 Q 400 490 360 480 Q 320 470 290 450 Q 260 430 240 410 Q 220 390 200 370 Q 180 350 160 330 Q 140 310 120 290 Q 100 270 80 250 Q 60 230 40 210 Q 20 190 10 170 Q 5 150 15 130 Q 25 110 45 95 Q 65 80 90 75 Q 200 75 300 75 Q 400 75 460 80 Z" />
-            {/* Africa */}
-            <path d="M 500 180 Q 520 200 540 230 Q 560 260 580 290 Q 600 320 620 350 Q 640 380 660 410 Q 680 440 700 470 Q 720 490 750 495 Q 780 500 810 495 Q 840 485 870 470 Q 900 450 930 430 Q 960 410 980 390 Q 1000 370 1000 350 Q 995 330 980 310 Q 960 290 940 270 Q 920 250 900 230 Q 880 210 860 190 Q 840 170 820 150 Q 800 130 780 110 Q 760 90 740 75 Q 720 65 700 60 Q 680 58 660 62 Q 640 70 620 85 Q 600 100 580 120 Q 560 140 540 160 Z" />
-            {/* Asia */}
-            <path d="M 600 80 Q 650 85 700 90 Q 750 95 800 100 Q 850 105 900 110 Q 950 115 1000 120 Q 1000 140 995 160 Q 985 180 970 200 Q 950 220 930 240 Q 910 260 890 280 Q 870 300 850 320 Q 830 340 810 360 Q 790 380 770 400 Q 750 420 730 440 Q 710 460 690 480 Q 670 495 650 500 Q 630 495 610 480 Q 590 460 570 440 Q 550 420 530 400 Q 510 380 490 360 Q 470 340 450 320 Q 430 300 410 280 Q 390 260 370 240 Q 350 220 330 200 Q 310 180 290 160 Q 270 140 250 120 Q 230 100 210 85 Q 190 75 400 80 Z" />
-            {/* Australia */}
-            <path d="M 760 340 Q 790 350 820 360 Q 850 370 880 380 Q 910 390 940 400 Q 970 410 990 420 Q 1000 440 995 460 Q 985 480 970 495 Q 950 500 930 495 Q 910 480 890 460 Q 870 440 850 420 Q 830 400 810 380 Q 790 360 760 340 Z" />
+          {/* Simple world map outline - continents (stylized) - scaled to match 1200x600 viewBox */}
+          <g opacity="0.25" fill="rgba(100, 116, 139, 0.3)" stroke="rgba(148, 163, 184, 0.5)" strokeWidth="1.2">
+            {/* North America - scaled by 1.2x */}
+            <path d="M 120 96 Q 180 108 240 120 Q 300 132 360 156 Q 384 180 396 216 Q 402 252 390 288 Q 372 324 336 348 Q 288 372 240 384 Q 180 390 120 372 Q 72 348 60 312 Q 54 276 66 240 Q 84 204 108 168 Q 120 132 120 96 Z" />
+            {/* South America - scaled by 1.2x */}
+            <path d="M 336 336 Q 360 360 384 396 Q 408 432 420 468 Q 432 504 444 540 Q 456 564 480 576 Q 504 582 528 576 Q 552 564 576 540 Q 588 504 582 456 Q 570 408 552 372 Q 528 336 492 312 Q 456 294 420 288 Q 384 294 360 312 Z" />
+            {/* Europe - scaled by 1.2x */}
+            <path d="M 552 96 Q 600 102 660 108 Q 720 114 780 120 Q 840 126 900 132 Q 960 138 1020 144 Q 1176 168 1188 192 Q 1182 216 1164 240 Q 1140 264 1104 288 Q 1056 312 1008 336 Q 960 360 912 384 Q 864 408 816 432 Q 768 456 720 480 Q 672 504 624 528 Q 576 552 528 576 Q 480 588 432 576 Q 384 564 348 540 Q 312 516 288 492 Q 264 468 240 444 Q 216 420 192 396 Q 168 372 144 348 Q 120 324 96 300 Q 72 276 48 252 Q 24 228 12 204 Q 6 180 18 156 Q 30 132 54 114 Q 78 96 108 90 Q 240 90 360 90 Q 480 90 552 96 Z" />
+            {/* Africa - scaled by 1.2x */}
+            <path d="M 600 216 Q 624 240 648 276 Q 672 312 696 348 Q 720 384 744 420 Q 768 456 792 492 Q 816 528 840 564 Q 864 588 900 594 Q 936 600 972 594 Q 1008 582 1044 564 Q 1080 540 1116 516 Q 1152 492 1176 468 Q 1200 444 1200 420 Q 1194 396 1176 372 Q 1152 348 1128 324 Q 1104 300 1080 276 Q 1056 252 1032 228 Q 1008 204 984 180 Q 960 156 936 132 Q 912 108 888 90 Q 864 78 840 72 Q 816 70 792 74 Q 768 84 744 102 Q 720 120 696 144 Q 672 168 648 192 Z" />
+            {/* Asia - scaled by 1.2x */}
+            <path d="M 720 96 Q 780 102 840 108 Q 900 114 960 120 Q 1020 126 1080 132 Q 1140 138 1200 144 Q 1200 168 1194 192 Q 1182 216 1164 240 Q 1146 264 1128 288 Q 1110 312 1092 336 Q 1074 360 1056 384 Q 1038 408 1020 432 Q 1002 456 984 480 Q 966 504 948 528 Q 930 552 912 576 Q 894 594 876 600 Q 858 594 840 576 Q 822 552 804 528 Q 786 504 768 480 Q 750 456 732 432 Q 714 408 696 384 Q 678 360 660 336 Q 642 312 624 288 Q 606 264 588 240 Q 570 216 552 192 Q 534 168 516 144 Q 498 120 480 102 Q 462 90 252 96 Z" />
+            {/* Australia - scaled by 1.2x */}
+            <path d="M 912 408 Q 948 420 984 432 Q 1020 444 1056 456 Q 1092 468 1128 480 Q 1164 492 1188 504 Q 1200 528 1194 552 Q 1182 576 1164 594 Q 1140 600 1116 594 Q 1092 576 1068 552 Q 1044 528 1020 504 Q 996 480 972 456 Q 948 432 912 408 Z" />
           </g>
 
               {/* Flows */}
@@ -162,23 +271,12 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                 const thickness = minThickness + (flowIntensity * (maxThickness - minThickness));
                 const nodeRadius = 35;
 
-                // Calculate the angle from source to target
-                const dx = target.x - source.x;
-                const dy = target.y - source.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
+                // Get curved edge endpoints
+                const endpoints = getCurvedEdgeEndpoints(source, target, nodeRadius);
                 
-                // If nodes are too close, skip this flow
-                if (distance < nodeRadius * 2) return null;
-                
-                // Calculate unit vector
-                const unitX = dx / distance;
-                const unitY = dy / distance;
-                
-                // Calculate edge points on circles
-                const sourceEdgeX = source.x + nodeRadius * unitX;
-                const sourceEdgeY = source.y + nodeRadius * unitY;
-                const targetEdgeX = target.x - nodeRadius * unitX;
-                const targetEdgeY = target.y - nodeRadius * unitY;
+                // Check if flow should be highlighted
+                const isHighlighted = isFlowHighlighted(flow);
+                const flowOpacity = isHighlighted ? 1 : (highlightedRegions.size > 0 ? 0.2 : 0.6);
 
                 const flowKey = `flow-${flow.source}-${flow.target}-${index}`;
                 const pathId = `path-${flowKey}`;
@@ -189,41 +287,43 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                 const particleCount = Math.max(1, Math.floor(flowIntensity * 4));
                 const isHighIntensity = flowIntensity > 0.6;
 
+                // Create curved path string
+                const pathString = `M ${endpoints.x1} ${endpoints.y1} Q ${endpoints.controlX} ${endpoints.controlY} ${endpoints.x2} ${endpoints.y2}`;
+
                 return (
-                  <g key={flowKey} className="pointer-events-none">
+                  <g key={flowKey} className="pointer-events-none" opacity={flowOpacity}>
                     <defs>
                       {/* Gradient for flow line */}
                       <linearGradient id={gradientId} gradientUnits="userSpaceOnUse"
-                        x1={sourceEdgeX} y1={sourceEdgeY}
-                        x2={targetEdgeX} y2={targetEdgeY}>
-                        <stop offset="0%" stopColor={getFlowColor()} stopOpacity="0.8" />
-                        <stop offset="50%" stopColor={getFlowColor()} stopOpacity="0.6" />
-                        <stop offset="100%" stopColor={getFlowColor()} stopOpacity="0.8" />
+                        x1={endpoints.x1} y1={endpoints.y1}
+                        x2={endpoints.x2} y2={endpoints.y2}>
+                        <stop offset="0%" stopColor={getFlowColor()} stopOpacity="0.9" />
+                        <stop offset="50%" stopColor={getFlowColor()} stopOpacity="0.7" />
+                        <stop offset="100%" stopColor={getFlowColor()} stopOpacity="0.9" />
                       </linearGradient>
                     </defs>
                     
-                    {/* Path for particles */}
+                    {/* Path for particles (curved) */}
                     <path
                       id={pathId}
-                      d={`M ${sourceEdgeX} ${sourceEdgeY} L ${targetEdgeX} ${targetEdgeY}`}
+                      d={pathString}
                       fill="none"
                       stroke="none"
                     />
 
-                    {/* Main flow line with gradient */}
-                    <motion.line
-                      x1={sourceEdgeX}
-                      y1={sourceEdgeY}
-                      x2={targetEdgeX}
-                      y2={targetEdgeY}
+                    {/* Main flow line with gradient (curved) */}
+                    <motion.path
+                      d={pathString}
                       stroke={`url(#${gradientId})`}
                       strokeWidth={thickness}
+                      fill="none"
                       markerEnd={`url(#arrowhead-${assetType})`}
                       strokeLinecap="round"
+                      strokeLinejoin="round"
                       filter={isHighIntensity ? "url(#glow)" : undefined}
                       animate={{ 
                         strokeWidth: thickness,
-                        opacity: Math.max(0.5, Math.min(1, 0.6 + flowIntensity * 0.4)),
+                        opacity: Math.max(0.4, Math.min(1, 0.5 + flowIntensity * 0.5)),
                       }}
                       transition={{ 
                         duration: 0.5,
@@ -231,19 +331,18 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                       }}
                     />
 
-                    {/* Animated dashed stroke for motion effect */}
-                    <motion.line
-                      x1={sourceEdgeX}
-                      y1={sourceEdgeY}
-                      x2={targetEdgeX}
-                      y2={targetEdgeY}
+                    {/* Animated dashed stroke for motion effect (curved) */}
+                    <motion.path
+                      d={pathString}
                       stroke={`url(#${gradientId})`}
-                      strokeWidth={thickness * 0.7}
-                      strokeDasharray="12,8"
+                      strokeWidth={thickness * 0.6}
+                      strokeDasharray="15,10"
                       strokeLinecap="round"
-                      opacity={0.5}
+                      strokeLinejoin="round"
+                      fill="none"
+                      opacity={0.6}
                       animate={{
-                        strokeDashoffset: [0, -20],
+                        strokeDashoffset: [0, -25],
                       }}
                       transition={{
                         duration: animationDuration,
@@ -262,7 +361,7 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                           key={`particle-${particleIndex}`}
                           r={particleSize}
                           fill={getFlowColorSolid()}
-                          opacity={0.7}
+                          opacity={0.8}
                         >
                           <animateMotion
                             dur={`${animationDuration}s`}
@@ -273,7 +372,7 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                           </animateMotion>
                           <animate
                             attributeName="opacity"
-                            values="0.4;0.8;0.4"
+                            values="0.3;0.9;0.3"
                             dur={`${animationDuration}s`}
                             repeatCount="indefinite"
                             begin={`${delay}s`}
@@ -294,27 +393,71 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                 const baseRadius = 30;
                 const scaleFactor = Math.min(1.5, Math.max(0.7, region.stockIndex / 4000));
                 const radius = baseRadius * scaleFactor;
-                const fillOpacity = Math.max(0.15, Math.min(0.35, 0.2 + (Math.abs(region.stockChange) / 100) * 0.15));
+                
+                // Get region color with dynamic opacity
+                const regionColors = getRegionColor(region);
+                const isHighlighted = isRegionHighlighted(region.id);
+                const regionOpacity = isHighlighted ? 1 : (highlightedRegions.size > 0 ? 0.3 : 1);
+                const hasSignificantChange = Math.abs(region.stockChange) > 3;
+                const isHovered = hoveredRegion?.id === region.id;
 
                 return (
-                  <g key={region.id}>
+                  <g key={region.id} opacity={regionOpacity}>
+                    {/* Pulsing ring for regions with significant stock change */}
+                    {hasSignificantChange && (
+                      <motion.circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={radius + 15}
+                        fill="none"
+                        stroke={regionColors.pulseColor || regionColors.stroke}
+                        strokeWidth={4}
+                        className="pointer-events-none"
+                        animate={{
+                          r: [radius + 15, radius + 25, radius + 15],
+                          opacity: [0.6, 0.2, 0.6],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
+                    )}
+
+                    {/* Region shadow for depth */}
+                    <circle
+                      cx={pos.x + 3}
+                      cy={pos.y + 3}
+                      r={radius}
+                      fill="rgba(0, 0, 0, 0.2)"
+                      className="pointer-events-none"
+                    />
+
+                    {/* Main region circle */}
                     <motion.circle
                       cx={pos.x}
                       cy={pos.y}
                       r={radius}
-                      fill={`rgba(6, 182, 212, ${fillOpacity})`}
-                      stroke="rgb(6, 182, 212)"
-                      strokeWidth={2}
+                      fill={regionColors.fill}
+                      stroke={regionColors.stroke}
+                      strokeWidth={isHovered ? 8 : 6}
                       className="pointer-events-none"
+                      style={{ 
+                        filter: isHovered ? "drop-shadow(0 0 8px rgba(6, 182, 212, 0.5))" : "none" 
+                      }}
                       animate={{ 
                         r: radius,
-                        fill: `rgba(6, 182, 212, ${fillOpacity})`,
+                        fill: regionColors.fill,
+                        stroke: regionColors.stroke,
                       }}
                       transition={{ 
                         duration: 0.6,
                         ease: "easeInOut"
                       }}
                     />
+
+                    {/* Invisible hit area for better hover detection */}
                     <motion.circle
                       cx={pos.x}
                       cy={pos.y}
@@ -325,6 +468,8 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                       animate={{ r: radius + 10 }}
                       transition={{ duration: 0.6, ease: "easeInOut" }}
                     />
+
+                    {/* Region label */}
                     <text
                       x={pos.x}
                       y={pos.y}
@@ -335,6 +480,25 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                     >
                       {region.name}
                     </text>
+
+                    {/* Stock change percentage label */}
+                    {Math.abs(region.stockChange) > 0.5 && (
+                      <text
+                        x={pos.x}
+                        y={pos.y - radius - 20}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        className="font-semibold pointer-events-none"
+                        style={{ 
+                          userSelect: 'none', 
+                          fontSize: '14px',
+                          fill: region.stockChange > 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)',
+                          textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)'
+                        }}
+                      >
+                        {region.stockChange > 0 ? '+' : ''}{region.stockChange.toFixed(1)}%
+                      </text>
+                    )}
                   </g>
                 );
               })}
