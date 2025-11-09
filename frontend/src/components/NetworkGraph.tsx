@@ -12,20 +12,20 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Very large viewBox dimensions to completely fill the section
+  // ViewBox dimensions - slightly increased to make graph appear smaller and ensure all nodes fit
   // Using aspect ratio that matches typical screen (wider)
-  const VIEW_BOX_WIDTH = 3200;
-  const VIEW_BOX_HEIGHT = 2400;
+  // Increasing dimensions makes content appear smaller, ensuring all nodes are visible
+  const VIEW_BOX_WIDTH = 3600;
+  const VIEW_BOX_HEIGHT = 2700;
 
-  // Initial positions for nodes - spread out to fill the entire viewBox
-  // Using maximum distribution to utilize all available space
-  // Positions distributed to edges and corners of the viewBox
+  // Initial positions for nodes - centered with more spacing from edges
+  // Positions adjusted to be more centered within the larger viewBox
   const initialPositions: Record<string, { x: number; y: number }> = {
-    Stocks: { x: 1600, y: 150 },      // Top center - moved up higher
-    Bonds: { x: 300, y: 1700 },       // Left side - near left edge (keep as is)
-    Commodities: { x: 2900, y: 1800 }, // Right bottom corner (keep as is)
-    Crypto: { x: 1600, y: 2200 },     // Bottom center - near bottom edge (keep as is)
-    Cash: { x: 3000, y: 200 },        // Top right corner - moved up higher
+    Stocks: { x: 1800, y: 300 },      // Top center
+    Bonds: { x: 500, y: 1900 },       // Left side - moved in from edge
+    Commodities: { x: 3100, y: 2000 }, // Right bottom - moved in from edge
+    Crypto: { x: 1800, y: 2300 },     // Bottom center - moved up from edge
+    Cash: { x: 3200, y: 400 },        // Top right - moved in from edge
   };
 
   // Node positions state
@@ -35,7 +35,7 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     )
   );
 
-  // Static viewBox - no zoom
+  // Static viewBox - larger dimensions make content appear smaller
   const viewBox = `0 0 ${VIEW_BOX_WIDTH} ${VIEW_BOX_HEIGHT}`;
 
   // Get node size based on flow - larger nodes = positive flow (inflow), smaller nodes = negative flow (outflow)
@@ -489,7 +489,11 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
         const tooltipWidth = 200; // Fixed width for consistency
         const tooltipHeight = 110; // Approximate height
         const spacing = 15; // Space between node edge and tooltip
-        const verticalOffset = 80; // Additional offset to move tooltip much higher
+        
+        // Different vertical offsets for different nodes
+        // Stocks and Cash need to be moved up more
+        const isStocksOrCash = node.id === 'Stocks' || node.id === 'Cash';
+        const verticalOffset = isStocksOrCash ? 160 : 120; // More offset for Stocks and Cash
         
         // Position tooltip to the left of the node's left edge, positioned much higher up
         let tooltipX = screenPoint.x - tooltipWidth - spacing;

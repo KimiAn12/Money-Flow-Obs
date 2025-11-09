@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { GlobalFlow, RegionData } from "@/types";
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 interface GlobalFlowMapProps {
   regions: RegionData[];
@@ -9,8 +9,9 @@ interface GlobalFlowMapProps {
 }
 
 export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps) => {
-  const [hoveredFlow, setHoveredFlow] = useState<GlobalFlow | null>(null);
+  const [hoveredRegion, setHoveredRegion] = useState<RegionData | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Geographic positions on world map (percentage-based, then scaled to SVG coordinates)
   // Using a 1000x500 coordinate system that represents the world map
@@ -38,8 +39,53 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
     }
   };
 
+  // Handle mouse move to detect hover over regions with improved accuracy
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    
+    // Transform screen coordinates to SVG coordinates using the current transform matrix
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    
+    const inverseCTM = ctm.inverse();
+    const svgPt = pt.matrixTransform(inverseCTM);
+    
+    // Check if mouse is over any region
+    let foundRegion: RegionData | null = null;
+    const nodeRadius = 35; // Slightly larger radius for better hover detection
+    
+    for (const region of regions) {
+      const pos = regionPositions[region.id];
+      if (!pos) continue;
+      
+      const dx = svgPt.x - pos.x;
+      const dy = svgPt.y - pos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance <= nodeRadius) {
+        foundRegion = region;
+        break;
+      }
+    }
+    
+    setHoveredRegion(foundRegion);
+  }, [regions, regionPositions]);
+  
+  // Handle mouse leave to clear hover
+  const handleMouseLeave = useCallback(() => {
+    setHoveredRegion(null);
+  }, []);
+
   return (
-    <div className="relative w-full h-full glass-card rounded-lg border border-border/50 overflow-hidden">
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full glass-card rounded-lg border border-border/50 overflow-hidden"
+    >
       {/* Map Container */}
       <div className="w-full h-full">
         <svg
@@ -47,6 +93,8 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
           className="w-full h-full"
           viewBox="0 0 1000 500"
           preserveAspectRatio="xMidYMid meet"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
         >
           <defs>
             <marker
@@ -120,9 +168,7 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                 initial={{ pathLength: 0 }}
                 animate={{ pathLength: 1 }}
                 transition={{ duration: 1.5, delay: index * 0.2 }}
-                onMouseEnter={() => setHoveredFlow(flow)}
-                onMouseLeave={() => setHoveredFlow(null)}
-                className="cursor-pointer"
+                className="pointer-events-none"
               />
             );
           })}
@@ -149,13 +195,10 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
                 <circle
                   cx={pos.x}
                   cy={pos.y}
-                  r={30}
+                  r={40}
                   fill="transparent"
                   className="cursor-pointer"
                   style={{ pointerEvents: 'all' }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                  }}
                 />
                 <text
                   x={pos.x}
@@ -173,37 +216,108 @@ export const GlobalFlowMap = ({ regions, flows, assetType }: GlobalFlowMapProps)
         </svg>
       </div>
 
-      {/* Flow Tooltip */}
-      {hoveredFlow && (() => {
-        const sourcePos = regionPositions[hoveredFlow.source];
-        const targetPos = regionPositions[hoveredFlow.target];
-        if (!sourcePos || !targetPos) return null;
-        const midX = (sourcePos.x + targetPos.x) / 2;
-        const midY = (sourcePos.y + targetPos.y) / 2;
-        // Convert SVG coordinates (0-1000, 0-500) to percentage
-        const xPercent = (midX / 1000) * 100;
-        const yPercent = (midY / 500) * 100;
+      {/* Region Tooltip - positioned accurately to the left of the node */}
+      {hoveredRegion && (() => {
+        const pos = regionPositions[hoveredRegion.id];
+        if (!pos || !svgRef.current || !containerRef.current) return null;
+
+        // Get the SVG element and container
+        const svg = svgRef.current;
+        const container = containerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        
+        // Node radius in SVG coordinates
+        const nodeRadius = 30;
+        
+        // Create SVG point for the node center
+        const nodeCenterSVG = svg.createSVGPoint();
+        nodeCenterSVG.x = pos.x;
+        nodeCenterSVG.y = pos.y;
+        
+        // Get the current transform matrix
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return null;
+        
+        // Convert node center from SVG coordinates to screen coordinates
+        const nodeCenterScreen = nodeCenterSVG.matrixTransform(ctm);
+        
+        // Get tooltip dimensions (measured)
+        const tooltipWidth = 180;
+        const tooltipHeight = 100;
+        const spacing = 12; // Space between node edge and tooltip
+        
+        // Calculate the node's left edge in screen coordinates
+        // We need to account for the viewBox scaling
+        const svgRect = svg.getBoundingClientRect();
+        const viewBox = svg.viewBox.baseVal;
+        const scaleX = svgRect.width / viewBox.width;
+        const scaleY = svgRect.height / viewBox.height;
+        
+        // Node left edge in screen coordinates
+        const nodeLeftEdgeScreenX = nodeCenterScreen.x - (nodeRadius * scaleX);
+        
+        // Position tooltip to the left of the node's left edge
+        let tooltipX = nodeLeftEdgeScreenX - tooltipWidth - spacing;
+        
+        // Position tooltip vertically centered on the node, but moved up significantly
+        const verticalOffset = 80; // Move tooltip up by this amount
+        let tooltipY = nodeCenterScreen.y - (tooltipHeight / 2) - verticalOffset;
+        
+        // Ensure tooltip stays within container bounds
+        const padding = 10;
+        
+        // If tooltip goes off left edge, position it to the right of the node instead
+        if (tooltipX < containerRect.left + padding) {
+          const nodeRightEdgeScreenX = nodeCenterScreen.x + (nodeRadius * scaleX);
+          tooltipX = nodeRightEdgeScreenX + spacing;
+        }
+        
+        // Ensure tooltip doesn't go off right edge either
+        if (tooltipX + tooltipWidth > containerRect.right - padding) {
+          tooltipX = containerRect.right - tooltipWidth - padding;
+        }
+        
+        // If tooltip goes above container, adjust it
+        if (tooltipY < containerRect.top + padding) {
+          tooltipY = containerRect.top + padding;
+        }
+        
+        // If tooltip would go off bottom, adjust it
+        if (tooltipY + tooltipHeight > containerRect.bottom - padding) {
+          tooltipY = containerRect.bottom - tooltipHeight - padding;
+        }
+
+        // Calculate total flows for this region
+        const regionFlows = filteredFlows.filter(
+          (flow) => flow.source === hoveredRegion.id || flow.target === hoveredRegion.id
+        );
 
         return (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute z-30 glass-card p-3 rounded-lg border border-border/50 shadow-lg pointer-events-none"
+            initial={{ opacity: 0, scale: 0.95, x: -5 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.95, x: -5 }}
+            transition={{ duration: 0.15 }}
+            className="fixed z-30 glass-card p-3 rounded-lg border border-border/50 shadow-lg pointer-events-none"
             style={{
-              left: `${xPercent}%`,
-              top: `${yPercent}%`,
-              transform: 'translate(-50%, -50%)',
+              left: `${tooltipX}px`,
+              top: `${tooltipY}px`,
+              width: `${tooltipWidth}px`,
             }}
           >
-            <div className="text-sm font-semibold text-foreground">
-              {regions.find((r) => r.id === hoveredFlow.source)?.name} →{" "}
-              {regions.find((r) => r.id === hoveredFlow.target)?.name}
+            <div className="text-sm font-semibold text-foreground mb-1">{hoveredRegion.name}</div>
+            <div className="text-xs text-muted-foreground">
+              Stock Index: <span className="font-semibold text-foreground">
+                {hoveredRegion.stockIndex.toFixed(2)}
+              </span>
             </div>
             <div className="text-xs text-muted-foreground">
-              Flow: ${(hoveredFlow.amount / 1e9).toFixed(2)}B
+              Change: <span className={hoveredRegion.stockChange > 0 ? "text-cyan-500" : "text-purple-500"}>
+                {hoveredRegion.stockChange > 0 ? "+" : ""}{hoveredRegion.stockChange.toFixed(2)}%
+              </span>
             </div>
-            <div className="text-xs text-muted-foreground capitalize">
-              Type: {hoveredFlow.assetType}
+            <div className="text-xs text-muted-foreground">
+              Active Flows: <span className="font-semibold text-foreground">{regionFlows.length}</span>
             </div>
           </motion.div>
         );

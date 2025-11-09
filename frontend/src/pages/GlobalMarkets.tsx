@@ -59,23 +59,20 @@ export default function GlobalMarkets() {
   const totalFlow = filteredFlows.reduce((sum, flow) => sum + flow.amount, 0);
 
   return (
-    <div className="h-full bg-background overflow-hidden flex flex-col">
+    <div className="h-screen bg-background overflow-hidden flex flex-col">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex-1 flex flex-col p-6 min-h-0"
+        className="h-full flex flex-col p-4"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
           <div>
-            <h1 className="text-2xl font-bold glow-purple mb-1">Global Market Flow</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl font-bold glow-purple mb-0.5">Global Market Flow</h1>
+            <p className="text-xs text-muted-foreground">
               Real-time capital flow visualization across global markets
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Hover over regions and flows for details
-            </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
@@ -92,8 +89,8 @@ export default function GlobalMarkets() {
           </div>
         </div>
 
-        <Tabs value={assetType} onValueChange={(value) => setAssetType(value as AssetType)} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="glass-card border border-border/50 mb-4">
+        <Tabs value={assetType} onValueChange={(value) => setAssetType(value as AssetType)} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <TabsList className="glass-card border border-border/50 mb-3 flex-shrink-0">
             <TabsTrigger value="equities" className="data-[state=active]:border-glow-cyan">
               Equities
             </TabsTrigger>
@@ -105,15 +102,15 @@ export default function GlobalMarkets() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value={assetType} className="flex-1 min-h-0 flex flex-col">
+          <TabsContent value={assetType} className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Main Content: Graph on Left, Info on Right */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 flex-1 min-h-0 overflow-hidden">
               {/* Graph - Left Side (2/3 width) */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 }}
-                className="lg:col-span-2 min-h-0"
+                className="lg:col-span-2 h-full min-h-0 overflow-hidden"
               >
                 <GlobalFlowMap
                   regions={data.regions}
@@ -127,54 +124,56 @@ export default function GlobalMarkets() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
-                className="lg:col-span-1 flex flex-col gap-3 min-h-0 overflow-y-auto"
+                className="lg:col-span-1 h-full flex flex-col gap-2 min-h-0 overflow-hidden"
               >
-                <div className="glass-card p-4 rounded-lg border border-border/50 flex-shrink-0">
-                  <h2 className="text-lg font-semibold mb-3">Flow Summary</h2>
-                  <div className="space-y-2">
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Total Flow</div>
-                      <div className="text-xl font-bold">${(totalFlow / 1e9).toFixed(2)}B</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Active Flows</div>
-                      <div className="text-xl font-bold">{filteredFlows.length}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground mb-1">Asset Type</div>
-                      <div className="text-base font-semibold capitalize">{assetType}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="glass-card p-4 rounded-lg border border-border/50 flex-shrink-0">
-                  <h2 className="text-lg font-semibold mb-3">Regions</h2>
-                  <div className="space-y-2">
-                    {data.regions.map((region) => (
-                      <div
-                        key={region.id}
-                        className="p-2 rounded-lg border border-border/30 hover:border-primary/50 transition-all"
-                      >
-                        <div className="font-semibold text-sm">{region.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Index: {region.stockIndex.toFixed(2)} ({region.stockChange > 0 ? "+" : ""}{region.stockChange.toFixed(2)}%)
-                        </div>
+                <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+                  <div className="glass-card p-3 rounded-lg border border-border/50 flex-shrink-0 mb-2">
+                    <h2 className="text-base font-semibold mb-2">Flow Summary</h2>
+                    <div className="space-y-1.5">
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Total Flow</div>
+                        <div className="text-lg font-bold">${(totalFlow / 1e9).toFixed(2)}B</div>
                       </div>
-                    ))}
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Active Flows</div>
+                        <div className="text-lg font-bold">{filteredFlows.length}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-0.5">Asset Type</div>
+                        <div className="text-sm font-semibold capitalize">{assetType}</div>
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-xs"
-                  >
-                    ⚠️ {error} (Using cached data)
-                  </motion.div>
-                )}
+                  <div className="glass-card p-3 rounded-lg border border-border/50 flex-shrink-0 mb-2">
+                    <h2 className="text-base font-semibold mb-2">Regions</h2>
+                    <div className="space-y-1.5">
+                      {data.regions.map((region) => (
+                        <div
+                          key={region.id}
+                          className="p-2 rounded-lg border border-border/30 hover:border-primary/50 transition-all"
+                        >
+                          <div className="font-semibold text-xs">{region.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Index: {region.stockIndex.toFixed(2)} ({region.stockChange > 0 ? "+" : ""}{region.stockChange.toFixed(2)}%)
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="p-2 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-xs mb-2"
+                    >
+                      ⚠️ {error} (Using cached data)
+                    </motion.div>
+                  )}
+                </div>
                 
-                <div className="text-xs text-center text-muted-foreground flex-shrink-0">
+                <div className="text-xs text-center text-muted-foreground flex-shrink-0 pt-1 border-t border-border/30">
                   {isLoading ? "Loading..." : `Last updated: ${new Date(data.timestamp).toLocaleString()}`}
                 </div>
               </motion.div>

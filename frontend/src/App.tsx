@@ -12,16 +12,28 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppContent = () => (
-  <div className="h-screen bg-background overflow-hidden flex flex-col">
+  <div className="min-h-screen bg-background flex flex-col">
     <Navbar />
-    <div className="flex-1 min-h-0 overflow-hidden">
-      <Routes>
-        <Route path="/" element={<Hero />} />
-        <Route path="/industry-flow" element={<IndustryFlow />} />
-        <Route path="/global-markets" element={<GlobalMarkets />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </div>
+    <Routes>
+      <Route path="/" element={<Hero />} />
+      <Route 
+        path="/industry-flow" 
+        element={
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <IndustryFlow />
+          </div>
+        } 
+      />
+      <Route 
+        path="/global-markets" 
+        element={
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <GlobalMarkets />
+          </div>
+        } 
+      />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
   </div>
 );
 

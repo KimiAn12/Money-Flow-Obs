@@ -54,23 +54,20 @@ export default function IndustryFlow() {
 
 
   return (
-    <div className="h-full bg-background overflow-hidden flex flex-col">
+    <div className="h-screen bg-background overflow-hidden flex flex-col">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex-1 flex flex-col p-6 min-h-0"
+        className="h-full flex flex-col p-4"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-3 flex-shrink-0">
           <div>
-            <h1 className="text-2xl font-bold glow-cyan mb-1">Industry Flow Dashboard</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl font-bold glow-cyan mb-0.5">Industry Flow Dashboard</h1>
+            <p className="text-xs text-muted-foreground">
               Real-time capital flow visualization across asset classes
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Hover over nodes for details
-            </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
@@ -88,13 +85,13 @@ export default function IndustryFlow() {
         </div>
 
         {/* Main Content: Graph on Left, Info on Right */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 flex-1 min-h-0 overflow-hidden">
           {/* Graph - Left Side (2/3 width) */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="lg:col-span-2 min-h-0"
+            className="lg:col-span-2 h-full min-h-0 overflow-hidden"
           >
             <NetworkGraph nodes={data.nodes} edges={data.edges} />
           </motion.div>
@@ -104,46 +101,48 @@ export default function IndustryFlow() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-1 flex flex-col gap-3 min-h-0 overflow-y-auto"
+            className="lg:col-span-1 h-full flex flex-col gap-2 min-h-0 overflow-hidden"
           >
-            <div className="glass-card p-4 rounded-lg border border-border/50 flex-shrink-0">
-              <h2 className="text-lg font-semibold mb-3">Asset Classes</h2>
-              <div className="space-y-2">
-                {data.nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className={`p-3 rounded-lg border transition-all ${
-                      node.netFlowPct > 0
-                        ? "border-cyan-500/50 hover:border-cyan-500 bg-cyan-500/5"
-                        : "border-purple-500/50 hover:border-purple-500 bg-purple-500/5"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="font-semibold text-base">{node.id}</div>
-                      <span className={`text-xs font-bold ${node.netFlowPct > 0 ? "text-cyan-500" : "text-purple-500"}`}>
-                        {node.netFlowPct > 0 ? "+" : ""}{node.netFlowPct.toFixed(2)}%
-                      </span>
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="glass-card p-3 rounded-lg border border-border/50 flex-shrink-0 mb-2">
+                <h2 className="text-base font-semibold mb-2">Asset Classes</h2>
+                <div className="space-y-1.5">
+                  {data.nodes.map((node) => (
+                    <div
+                      key={node.id}
+                      className={`p-2 rounded-lg border transition-all ${
+                        node.netFlowPct > 0
+                          ? "border-cyan-500/50 hover:border-cyan-500 bg-cyan-500/5"
+                          : "border-purple-500/50 hover:border-purple-500 bg-purple-500/5"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="font-semibold text-sm">{node.id}</div>
+                        <span className={`text-xs font-bold ${node.netFlowPct > 0 ? "text-cyan-500" : "text-purple-500"}`}>
+                          {node.netFlowPct > 0 ? "+" : ""}{node.netFlowPct.toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div>Size: {node.size.toFixed(3)}</div>
+                        <div>Market Cap: ${(node.marketCap / 1000).toFixed(1)}B</div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground space-y-0.5">
-                      <div>Size: {node.size.toFixed(3)}</div>
-                      <div>Market Cap: ${(node.marketCap / 1000).toFixed(1)}B</div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-xs"
-              >
-                ⚠️ {error} (Using cached data)
-              </motion.div>
-            )}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="p-2 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-xs mb-2"
+                >
+                  ⚠️ {error} (Using cached data)
+                </motion.div>
+              )}
+            </div>
             
-            <div className="text-xs text-center text-muted-foreground flex-shrink-0">
+            <div className="text-xs text-center text-muted-foreground flex-shrink-0 pt-1 border-t border-border/30">
               {isLoading ? "Loading..." : `Last updated: ${new Date(data.timestamp).toLocaleString()}`}
             </div>
           </motion.div>
