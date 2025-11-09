@@ -9,23 +9,26 @@ interface NetworkGraphProps {
 
 export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // ViewBox dimensions - slightly increased to make graph appear smaller and ensure all nodes fit
+  // ViewBox dimensions - increased to zoom out and ensure all nodes are fully visible
   // Using aspect ratio that matches typical screen (wider)
-  // Increasing dimensions makes content appear smaller, ensuring all nodes are visible
-  const VIEW_BOX_WIDTH = 3600;
-  const VIEW_BOX_HEIGHT = 2700;
+  // Larger dimensions = more zoomed out = all nodes fit better
+  const VIEW_BOX_WIDTH = 4200;
+  const VIEW_BOX_HEIGHT = 3150;
 
   // Initial positions for nodes - centered with more spacing from edges
   // Positions adjusted to be more centered within the larger viewBox
+  // Scaled proportionally to match the new viewBox size
+  // Y-coordinates shifted down to move content lower in the view
   const initialPositions: Record<string, { x: number; y: number }> = {
-    Stocks: { x: 1800, y: 300 },      // Top center
-    Bonds: { x: 500, y: 1900 },       // Left side - moved in from edge
-    Commodities: { x: 3100, y: 2000 }, // Right bottom - moved in from edge
-    Crypto: { x: 1800, y: 2300 },     // Bottom center - moved up from edge
-    Cash: { x: 3200, y: 400 },        // Top right - moved in from edge
+    Stocks: { x: 2100, y: 500 },      // Top center - moved down
+    Bonds: { x: 600, y: 2350 },       // Left side - moved down
+    Commodities: { x: 3600, y: 2500 }, // Right bottom - moved down
+    Crypto: { x: 2100, y: 2850 },     // Bottom center - moved down
+    Cash: { x: 3700, y: 650 },        // Top right - moved down
   };
 
   // Node positions state
@@ -92,6 +95,16 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     });
   }, [nodes]);
 
+  // Get connected node IDs for a given node
+  const getConnectedNodes = useCallback((nodeId: string) => {
+    const connected = new Set<string>();
+    edges.forEach(edge => {
+      if (edge.source === nodeId) connected.add(edge.target);
+      if (edge.target === nodeId) connected.add(edge.source);
+    });
+    return Array.from(connected);
+  }, [edges]);
+
   // Handle mouse move to detect hover over nodes - improved accuracy
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
@@ -131,11 +144,20 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     });
     
     setHoveredNode(foundNode);
-  }, [nodes, nodePositions, getNodeSize]);
+    
+    // Highlight connected nodes when hovering
+    if (foundNode) {
+      const connected = getConnectedNodes(foundNode);
+      setHighlightedNodes(new Set([foundNode, ...connected]));
+    } else {
+      setHighlightedNodes(new Set());
+    }
+  }, [nodes, nodePositions, getNodeSize, getConnectedNodes]);
   
   // Handle mouse leave to clear hover
   const handleMouseLeave = useCallback(() => {
     setHoveredNode(null);
+    setHighlightedNodes(new Set());
   }, []);
 
 
@@ -185,7 +207,7 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     return minWidth + (flowIntensity * (maxWidth - minWidth));
   };
 
-  // Get node color based on asset type
+  // Get node color based on asset type and flow state
   const getNodeColor = (nodeId: string, netFlowPct: number) => {
     const colorMap: Record<string, { fill: string; stroke: string; lightFill: string }> = {
       Stocks: {
@@ -221,22 +243,35 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
       lightFill: "rgba(156, 163, 175, 0.1)"
     };
 
-    // Adjust opacity based on flow (positive flow = brighter, negative = dimmer)
+    // Dynamic fill opacity based on flow magnitude
+    // Positive flow = brighter (0.25 to 0.4), negative flow = dimmer (0.15 to 0.2)
+    const flowMagnitude = Math.abs(netFlowPct);
+    const normalizedMagnitude = Math.min(flowMagnitude / 10, 1); // Normalize to 0-1 (10% max)
+    
     if (netFlowPct > 0) {
+      // Positive flow: increase opacity (0.25 to 0.4)
+      const opacity = 0.25 + (normalizedMagnitude * 0.15);
       return {
-        fill: colors.fill.replace("0.2", "0.3"),
+        fill: colors.fill.replace(/0\.\d+/, opacity.toFixed(2)),
         stroke: colors.stroke,
-        lightFill: colors.lightFill
+        lightFill: colors.lightFill,
+        pulseColor: "rgba(34, 197, 94, 0.6)" // Green pulse for positive flow
       };
     } else if (netFlowPct < 0) {
+      // Negative flow: decrease opacity (0.15 to 0.2)
+      const opacity = 0.2 - (normalizedMagnitude * 0.05);
       return {
-        fill: colors.fill.replace("0.2", "0.15"),
+        fill: colors.fill.replace(/0\.\d+/, Math.max(0.1, opacity).toFixed(2)),
         stroke: colors.stroke,
-        lightFill: colors.lightFill
+        lightFill: colors.lightFill,
+        pulseColor: "rgba(239, 68, 68, 0.6)" // Red pulse for negative flow
       };
     }
     
-    return colors;
+    return {
+      ...colors,
+      pulseColor: "transparent"
+    };
   };
 
   // Calculate arrow direction based on netFlowPct difference
@@ -277,7 +312,9 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
         x1: fromPos.x - 5, 
         y1: fromPos.y, 
         x2: toPos.x + 5, 
-        y2: toPos.y 
+        y2: toPos.y,
+        controlX: (fromPos.x + toPos.x) / 2,
+        controlY: (fromPos.y + toPos.y) / 2
       };
     }
     
@@ -291,7 +328,27 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
     const x2 = toPos.x - ux * toSize;
     const y2 = toPos.y - uy * toSize;
     
-    return { x1, y1, x2, y2 };
+    // Calculate control point for curved edge (perpendicular offset)
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    // Curvature amount (perpendicular offset)
+    const curvature = Math.min(distance * 0.15, 200); // 15% of distance, max 200px
+    const controlX = midX + (-uy * curvature);
+    const controlY = midY + (ux * curvature);
+    
+    return { x1, y1, x2, y2, controlX, controlY };
+  };
+
+  // Check if edge should be highlighted (connected to hovered node)
+  const isEdgeHighlighted = (edge: FlowEdge) => {
+    if (highlightedNodes.size === 0) return false;
+    return highlightedNodes.has(edge.source) || highlightedNodes.has(edge.target);
+  };
+
+  // Check if node should be highlighted
+  const isNodeHighlighted = (nodeId: string) => {
+    if (highlightedNodes.size === 0) return true; // Show all if nothing hovered
+    return highlightedNodes.has(nodeId);
   };
 
   return (
@@ -425,11 +482,24 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
             const gradientId = `gradient-${edgeKey}`;
             const pathId = `path-${edgeKey}`;
             
-            // Calculate path length for animation timing
-            const pathLength = Math.sqrt(
-              Math.pow(endpoints.x2 - endpoints.x1, 2) + 
-              Math.pow(endpoints.y2 - endpoints.y1, 2)
-            );
+            // Check if edge should be highlighted
+            const isHighlighted = isEdgeHighlighted(edge);
+            const edgeOpacity = isHighlighted ? 1 : (highlightedNodes.size > 0 ? 0.2 : 0.6);
+            
+            // Calculate path length for animation timing (curved path)
+            const pathLength = endpoints.controlX && endpoints.controlY
+              ? // Approximate length of curved path
+                Math.sqrt(
+                  Math.pow(endpoints.controlX - endpoints.x1, 2) + 
+                  Math.pow(endpoints.controlY - endpoints.y1, 2)
+                ) + Math.sqrt(
+                  Math.pow(endpoints.x2 - endpoints.controlX, 2) + 
+                  Math.pow(endpoints.y2 - endpoints.controlY, 2)
+                )
+              : Math.sqrt(
+                  Math.pow(endpoints.x2 - endpoints.x1, 2) + 
+                  Math.pow(endpoints.y2 - endpoints.y1, 2)
+                );
             
             // Animation duration based on flow intensity (faster = higher intensity)
             // Stronger flows move faster (1-3 seconds)
@@ -441,8 +511,13 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
             // High intensity threshold for glow effect
             const isHighIntensity = edge.flowIntensity > 0.7;
 
+            // Create curved path string
+            const pathString = endpoints.controlX && endpoints.controlY
+              ? `M ${endpoints.x1} ${endpoints.y1} Q ${endpoints.controlX} ${endpoints.controlY} ${endpoints.x2} ${endpoints.y2}`
+              : `M ${endpoints.x1} ${endpoints.y1} L ${endpoints.x2} ${endpoints.y2}`;
+
             return (
-              <g key={edgeKey}>
+              <g key={edgeKey} opacity={edgeOpacity}>
                 <defs>
                   {/* Gradient definition for this edge */}
                   <linearGradient id={gradientId} gradientUnits="userSpaceOnUse"
@@ -454,24 +529,23 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                   </linearGradient>
                 </defs>
                 
-                {/* Path for particles to follow */}
+                {/* Path for particles to follow (curved) */}
                 <path
                   id={pathId}
-                  d={`M ${endpoints.x1} ${endpoints.y1} L ${endpoints.x2} ${endpoints.y2}`}
+                  d={pathString}
                   fill="none"
                   stroke="none"
                 />
 
-                {/* Main flow line with gradient */}
-                <motion.line
-                  x1={endpoints.x1}
-                  y1={endpoints.y1}
-                  x2={endpoints.x2}
-                  y2={endpoints.y2}
+                {/* Main flow line with gradient (curved) */}
+                <motion.path
+                  d={pathString}
                   stroke={`url(#${gradientId})`}
                   strokeWidth={edgeWidth}
+                  fill="none"
                   markerEnd={`url(#${markerId})`}
                   strokeLinecap="round"
+                  strokeLinejoin="round"
                   filter={isHighIntensity ? "url(#glow)" : undefined}
                   animate={{ 
                     opacity: Math.max(0.4, Math.min(1, 0.5 + edge.flowIntensity * 0.5)),
@@ -483,16 +557,15 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                   }}
                 />
 
-                {/* Animated dashed stroke for motion effect */}
-                <motion.line
-                  x1={endpoints.x1}
-                  y1={endpoints.y1}
-                  x2={endpoints.x2}
-                  y2={endpoints.y2}
+                {/* Animated dashed stroke for motion effect (curved) */}
+                <motion.path
+                  d={pathString}
                   stroke={`url(#${gradientId})`}
                   strokeWidth={edgeWidth * 0.6}
                   strokeDasharray="15,10"
                   strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
                   opacity={0.6}
                   animate={{
                     strokeDashoffset: [0, -25],
@@ -543,17 +616,54 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                 if (!pos) return null;
                 const size = getNodeSize(node);
                 const nodeColors = getNodeColor(node.id, node.netFlowPct);
+                const isHighlighted = isNodeHighlighted(node.id);
+                const nodeOpacity = isHighlighted ? 1 : (highlightedNodes.size > 0 ? 0.3 : 1);
+                const hasSignificantFlow = Math.abs(node.netFlowPct) > 3;
+                const flowMagnitude = Math.abs(node.netFlowPct);
 
                 return (
-                  <g key={node.id}>
+                  <g key={node.id} opacity={nodeOpacity}>
+                    {/* Pulsing ring for nodes with significant flow */}
+                    {hasSignificantFlow && (
+                      <motion.circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={size / 2 + 15}
+                        fill="none"
+                        stroke={nodeColors.pulseColor || nodeColors.stroke}
+                        strokeWidth={4}
+                        className="pointer-events-none"
+                        animate={{
+                          r: [size / 2 + 15, size / 2 + 25, size / 2 + 15],
+                          opacity: [0.6, 0.2, 0.6],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
+                    )}
+
+                    {/* Node shadow for depth */}
+                    <circle
+                      cx={pos.x + 3}
+                      cy={pos.y + 3}
+                      r={size / 2}
+                      fill="rgba(0, 0, 0, 0.2)"
+                      className="pointer-events-none"
+                    />
+
+                    {/* Main node circle */}
                     <motion.circle
                       cx={pos.x}
                       cy={pos.y}
                       r={size / 2}
                       fill={nodeColors.fill}
                       stroke={nodeColors.stroke}
-                      strokeWidth={6}
+                      strokeWidth={isHighlighted && hoveredNode === node.id ? 8 : 6}
                       className="pointer-events-none"
+                      style={{ filter: isHighlighted && hoveredNode === node.id ? "drop-shadow(0 0 8px rgba(255, 255, 255, 0.5))" : "none" }}
                       animate={{ 
                         r: size / 2,
                         fill: nodeColors.fill,
@@ -564,6 +674,7 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                         ease: "easeInOut"
                       }}
                     />
+
                     {/* Invisible hit area for better hover detection */}
                     <motion.circle
                       cx={pos.x}
@@ -575,6 +686,8 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                       animate={{ r: size / 2 + 20 }}
                       transition={{ duration: 0.6, ease: "easeInOut" }}
                     />
+
+                    {/* Node label */}
                     <text
                       x={pos.x}
                       y={pos.y}
@@ -585,6 +698,25 @@ export const NetworkGraph = ({ nodes, edges }: NetworkGraphProps) => {
                     >
                       {node.id}
                     </text>
+
+                    {/* Flow percentage label */}
+                    {Math.abs(node.netFlowPct) > 0.5 && (
+                      <text
+                        x={pos.x}
+                        y={pos.y - size / 2 - 25}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        className="font-semibold pointer-events-none"
+                        style={{ 
+                          userSelect: 'none', 
+                          fontSize: '40px',
+                          fill: node.netFlowPct > 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)',
+                          textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)'
+                        }}
+                      >
+                        {node.netFlowPct > 0 ? '+' : ''}{node.netFlowPct.toFixed(1)}%
+                      </text>
+                    )}
                   </g>
                 );
               })}
