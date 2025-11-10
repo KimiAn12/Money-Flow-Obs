@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
 """
-Daily data update script for Money Flow Observatory.
-
-This script:
-1. Fetches data from Alpha Vantage and FRED APIs
-2. Processes and transforms the data
-3. Saves JSON files to frontend/public/data/
-4. Commits and pushes changes to GitHub (if data changed)
-
 Run this script daily at 5 PM using cron (Linux/macOS) or Task Scheduler (Windows).
 """
 
